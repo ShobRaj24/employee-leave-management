@@ -1,0 +1,15 @@
+<template>
+    <lightning-card title="Pending Leave Requests" icon-name="standard:employee_job">
+        <div class="slds-p-around_medium">
+
+            <lightning-datatable
+                key-field="Id"
+                data={leaveRequests}
+                columns={columns}
+                hide-checkbox-column
+                onrowaction={handleRowAction}>
+            </lightning-datatable>
+
+        </div>
+    </lightning-card>
+</template>

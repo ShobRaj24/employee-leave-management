@@ -1,0 +1,31 @@
+<template>
+    <lightning-modal-header label="Reject Leave Request">
+    </lightning-modal-header>
+
+    <lightning-modal-body>
+
+        <lightning-textarea
+            label="Manager Comments"
+            value={comments}
+            onchange={handleCommentsChange}
+            required>
+        </lightning-textarea>
+
+    </lightning-modal-body>
+
+    <lightning-modal-footer>
+
+        <lightning-button
+            label="Cancel"
+            onclick={handleCancel}>
+        </lightning-button>
+
+        <lightning-button
+            variant="destructive"
+            label="Reject"
+            onclick={handleReject}
+            class="slds-m-left_small">
+        </lightning-button>
+
+    </lightning-modal-footer>
+</template>
