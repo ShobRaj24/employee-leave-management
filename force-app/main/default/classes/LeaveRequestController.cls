@@ -47,4 +47,9 @@ public static void approveLeaveRequest(Id leaveRequestId) {
 public static void rejectLeaveRequest(Id leaveRequestId,String managerComments) {
     LeaveRequestService.rejectLeaveRequest(leaveRequestId, managerComments);
 }
+
+@AuraEnabled(cacheable=true)
+public static Leave_Balance__c getLeaveBalance() {
+    return LeaveRequestService.getLeaveBalance();
+}
 }

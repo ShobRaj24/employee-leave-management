@@ -12,6 +12,7 @@ import createLeaveRequest from '@salesforce/apex/LeaveRequestController.createLe
 import getMyLeaveRequests from '@salesforce/apex/LeaveRequestController.getMyLeaveRequests';
 import LightningConfirm from 'lightning/confirm';
 import { ShowToastEvent } from 'lightning/platformShowToastEvent';
+import getLeaveBalance from '@salesforce/apex/LeaveRequestController.getLeaveBalance';
 
 function getRowActions(row, doneCallback) {
 
@@ -47,7 +48,7 @@ export default class LeaveRequestForm extends LightningElement {
     leaveRequests = [];
     error;
     wiredLeaveRequestsResult;
-
+    leaveBalance={Id:'',casualLeave: 0, sickLeave: 0, earnedLeave: 0};
     leaveRequest = {
         employeeId: '',
         leaveType: '',
@@ -56,6 +57,18 @@ export default class LeaveRequestForm extends LightningElement {
         reason: ''
     };
 
+ @wire(getLeaveBalance)
+wiredLeaveBalance({ data, error }) {
+    if (data) {
+        this.leaveBalance = data;
+        this.error = undefined;
+        
+    } else if (error) {
+        this.error = error;
+        this.leaveBalance = undefined;
+        
+    }
+}
     //Get Leave records
     @wire(getMyLeaveRequests)
     wiredLeaveRequests(result) {

@@ -13,10 +13,11 @@ public with sharing class LeaveRequestService {
 
     
     Leave_Request__c leaveRequest = mapToLeaveRequest(request);
+        calculateTotalDays(leaveRequest);
+    Leave_Balance__c leaveBalance = getLeaveBalance();    
+    LeaveRequestValidator.validateLeaveRequest(leaveRequest,leaveBalance);
 
-    LeaveRequestValidator.validateLeaveRequest(leaveRequest);
-
-    calculateTotalDays(leaveRequest);
+    
     applyDefaultValues(leaveRequest);
     saveLeaveRequest(leaveRequest);
 
@@ -128,21 +129,48 @@ public static List<Leave_Request__c> getPendingLeaveRequests() {
 public static void approveLeaveRequest(Id leaveRequestId) {
 
     Leave_Request__c leaveRequest = [
-        SELECT Id, Status__c
+        SELECT Id,
+               Employee__c,
+               Leave_Type__c,
+               Total_Days__c,
+               Status__c
         FROM Leave_Request__c
         WHERE Id = :leaveRequestId
         LIMIT 1
     ];
 
-    if (leaveRequest.Status__c != 'Pending') {
+    if (leaveRequest.Status__c == LeaveRequestConstants.STATUS_APPROVED) {
+        throw new AuraHandledException(
+            'This leave request has already been approved.'
+        );
+    }
+
+    if (leaveRequest.Status__c != LeaveRequestConstants.STATUS_PENDING) {
         throw new AuraHandledException(
             'Only pending leave requests can be approved.'
         );
     }
 
-    leaveRequest.Status__c = 'Approved';
+    Leave_Balance__c leaveBalance =
+        getLeaveBalance(leaveRequest.Employee__c);
 
-    update leaveRequest;
+    LeaveRequestValidator.validateLeaveBalanceForApproval(
+        leaveRequest,
+        leaveBalance
+    );
+
+    deductLeaveBalance(
+        leaveRequest,
+        leaveBalance
+    );
+
+    leaveRequest.Status__c =
+        LeaveRequestConstants.STATUS_APPROVED;
+
+    update new List<SObject>{
+        leaveBalance,
+        leaveRequest
+    };
 }
 
 /**
@@ -171,4 +199,46 @@ System.debug('Manager Comments: ' + managerComments);
 
     update leaveRequest;
 }
+
+public static Leave_Balance__c getLeaveBalance() {
+    return getLeaveBalance(UserInfo.getUserId());
 }
+
+private static Leave_Balance__c getLeaveBalance(Id employeeId) {
+
+    List<Leave_Balance__c> balances = [
+        SELECT Id,
+               Casual_Leave__c,
+               Sick_Leave__c,
+               Earned_Leave__c
+        FROM Leave_Balance__c
+        WHERE Employee__c = :employeeId
+        LIMIT 1
+    ];
+
+    return balances.isEmpty() ? null : balances[0];
+}
+
+/**
+ * Deducts leave balance after approval.
+ */
+private static void deductLeaveBalance(
+    Leave_Request__c leaveRequest,
+    Leave_Balance__c leaveBalance
+) {
+
+    if (leaveRequest.Leave_Type__c == LeaveRequestConstants.CASUAL_LEAVE) {
+        leaveBalance.Casual_Leave__c -= leaveRequest.Total_Days__c;
+    }
+    else if (leaveRequest.Leave_Type__c == LeaveRequestConstants.SICK_LEAVE) {
+        leaveBalance.Sick_Leave__c -= leaveRequest.Total_Days__c;
+    }
+    else if (leaveRequest.Leave_Type__c == LeaveRequestConstants.EARNED_LEAVE) {
+        leaveBalance.Earned_Leave__c -= leaveRequest.Total_Days__c;
+    }
+    else {
+        throw new AuraHandledException('Invalid leave type.');
+    }
+}
+}
+ 

@@ -1,4 +1,21 @@
 <template>
+    <lightning-card title="Leave Balance">
+    <div class="slds-p-horizontal_medium slds-p-vertical_small">
+        <div class="slds-grid slds-wrap slds-gutters_small">
+            <div class="slds-col">
+                <strong>Casual Leave:</strong> {leaveBalance.Casual_Leave__c}
+             </div>
+
+                <div class="slds-col">
+                    <strong>Sick Leave:</strong> {leaveBalance.Sick_Leave__c}
+                </div>
+
+                <div class="slds-col">
+                    <strong>Earned Leave:</strong> {leaveBalance.Earned_Leave__c}
+                </div>
+        </div>
+    </div>
+</lightning-card>
     <lightning-card title="Apply Leave" icon-name="standard:calibration">
 
         <div class="slds-p-around_medium">
