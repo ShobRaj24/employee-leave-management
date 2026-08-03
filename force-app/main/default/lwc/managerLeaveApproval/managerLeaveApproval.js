@@ -128,7 +128,6 @@ export default class ManagerLeaveApproval extends LightningElement {
                 const comments = await RejectLeaveModal.open({
                     size: 'small'
                 });
-console.log('Manager Comments: ' + managerComments);
                 // User closed the modal
                 if (comments === undefined) {
                     return;
@@ -149,15 +148,21 @@ console.log('Manager Comments: ' + managerComments);
 
             await refreshApex(this.wiredPendingRequestsResult);
 
-        } catch (error) {
+        }catch (error) {
 
-            this.dispatchEvent(
-                new ShowToastEvent({
-                    title: 'Error',
-                    message: error.body?.message || 'Operation failed.',
-                    variant: 'error'
-                })
-            );
-        }
+    console.error('Reject Error:', error);
+    console.error('Reject Error Body:', error.body);
+
+    this.dispatchEvent(
+        new ShowToastEvent({
+            title: 'Error',
+            message:
+                error?.body?.message ||
+                error?.message ||
+                JSON.stringify(error),
+            variant: 'error'
+        })
+    );
+}
     }
 }

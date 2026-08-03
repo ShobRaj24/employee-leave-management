@@ -1,0 +1,42 @@
+.balance-card {
+
+    border: 1px solid #d8dde6;
+    border-radius: 8px;
+
+    background: rgb(255, 255, 255);
+
+    text-align: center;
+
+    padding: 1.5rem;
+
+    box-shadow: 0 2px 6px rgba(0,0,0,.08);
+
+    transition: .2s ease;
+}
+
+.balance-card:hover {
+
+    transform: translateY(-3px);
+
+    box-shadow: 0 6px 14px rgba(0,0,0,.15);
+}
+
+.balance-title {
+
+    font-size: .9rem;
+
+    color: #54698d;
+
+    font-weight: 600;
+}
+
+.balance-value {
+
+    margin-top: .8rem;
+
+    font-size: 2rem;
+
+    font-weight: bold;
+
+    color: #0176d3;
+}

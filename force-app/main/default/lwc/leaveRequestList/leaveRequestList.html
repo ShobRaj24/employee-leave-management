@@ -1,0 +1,13 @@
+<template>
+    <lightning-card title="My Leave Requests">
+
+        <c-status-datatable
+            key-field="Id"
+            data={leaveRequests}
+            columns={columns}
+            hide-checkbox-column
+            onrowaction={handleRowAction}>
+        </c-status-datatable>
+
+    </lightning-card>
+</template>

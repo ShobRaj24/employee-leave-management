@@ -1,0 +1,40 @@
+.badge{
+
+    padding:6px 14px;
+
+    border-radius:20px;
+
+    color:white;
+
+    font-weight:600;
+
+    font-size:12px;
+
+    display:inline-block;
+
+    text-align:center;
+
+    min-width:90px;
+}
+
+.approved{
+
+    background:#2e844a;
+}
+
+.pending{
+
+    background:#ffb75d;
+
+    color:black;
+}
+
+.rejected{
+
+    background:#ba0517;
+}
+
+.cancelled{
+
+    background:#5c5c5c;
+}
