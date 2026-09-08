@@ -40,3 +40,9 @@
 
     color: #0176d3;
 }
+
+.form-container {
+    max-width: 700px;
+    margin: 2rem auto;
+    padding: 1.5rem;
+}

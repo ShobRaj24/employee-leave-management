@@ -17,7 +17,7 @@ public with sharing class LeaveRequestService {
     Leave_Balance__c leaveBalance = getLeaveBalance();    
     LeaveRequestValidator.validateLeaveRequest(leaveRequest,leaveBalance);
 
-    
+     checkOverlappingLeave(leaveRequest);
     applyDefaultValues(leaveRequest);
     saveLeaveRequest(leaveRequest);
 
@@ -106,6 +106,8 @@ public static List<Leave_Request__c> getMyLeaveRequests() {
  */
 public static List<Leave_Request__c> getPendingLeaveRequests() {
 
+    Set<Id> employeeIds = getManagedEmployeeIds();
+
     return [
         SELECT
             Id,
@@ -117,15 +119,54 @@ public static List<Leave_Request__c> getPendingLeaveRequests() {
             Total_Days__c,
             Reason__c,
             Status__c,
+            Manager_Comments__c,
             CreatedDate
         FROM Leave_Request__c
-        WHERE Status__c = 'Pending'
+        WHERE Employee__c IN :employeeIds
         ORDER BY CreatedDate DESC
     ];
 }
+
+private static Set<Id> getManagedEmployeeIds() {
+
+    Set<Id> employeeIds = new Set<Id>();
+
+    for (User employee : [
+        SELECT Id
+        FROM User
+        WHERE ManagerId = :UserInfo.getUserId()
+    ]) {
+        employeeIds.add(employee.Id);
+    }
+
+    return employeeIds;
+}
 /**
  * Approves a pending leave request.
+ 
+ 
  */
+private static void checkOverlappingLeave(Leave_Request__c leaveRequest) {
+
+    List<Leave_Request__c> overlappingRequests = [
+        SELECT Id
+        FROM Leave_Request__c
+        WHERE Employee__c = :leaveRequest.Employee__c
+          AND Status__c IN (
+              :LeaveRequestConstants.STATUS_PENDING,
+              :LeaveRequestConstants.STATUS_APPROVED
+          )
+          AND Start_Date__c <= :leaveRequest.End_Date__c
+          AND End_Date__c >= :leaveRequest.Start_Date__c
+        LIMIT 1
+    ];
+
+    if (!overlappingRequests.isEmpty()) {
+        throw new AuraHandledException(
+            'You already have a pending or approved leave request for some of these dates.'
+        );
+    }
+}
 public static void approveLeaveRequest(Id leaveRequestId) {
 
     Leave_Request__c leaveRequest = [

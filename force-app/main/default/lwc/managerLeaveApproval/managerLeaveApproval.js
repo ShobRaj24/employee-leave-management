@@ -46,22 +46,30 @@ const COLUMNS = [
         type: 'text'
     },
     {
-        type: 'action',
-        typeAttributes: {
-            rowActions: [
-                {
-                    label: 'Approve',
-                    name: 'approve'
-                },
-                {
-                    label: 'Reject',
-                    name: 'reject'
-                }
-            ]
-        }
+    type: 'action',
+    typeAttributes: {
+        rowActions: getRowActions
     }
+}
 ];
 
+function getRowActions(row, doneCallback) {
+    const actions = [];
+
+    if (row.Status__c === 'Pending') {
+        actions.push({
+            label: 'Approve',
+            name: 'approve'
+        });
+
+        actions.push({
+            label: 'Reject',
+            name: 'reject'
+        });
+    }
+
+    doneCallback(actions);
+}
 export default class ManagerLeaveApproval extends LightningElement {
 
     leaveRequests = [];
