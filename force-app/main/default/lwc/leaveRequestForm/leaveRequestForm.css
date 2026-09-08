@@ -1,48 +1,84 @@
 .balance-card {
-
-    border: 1px solid #d8dde6;
-    border-radius: 8px;
-
-    background: rgb(255, 255, 255);
-
-    text-align: center;
-
-    padding: 1.5rem;
-
-    box-shadow: 0 2px 6px rgba(0,0,0,.08);
-
-    transition: .2s ease;
+    border-radius: 10px;
+    background: #ffffff;
+    padding: 1.25rem;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+    border: 1px solid #e5e5e5;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
 .balance-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.1);
+}
 
-    transform: translateY(-3px);
+.casual-card {
+    border-left: 4px solid #0176d3;
+}
 
-    box-shadow: 0 6px 14px rgba(0,0,0,.15);
+.sick-card {
+    border-left: 4px solid #fe9339;
+}
+
+.annual-card {
+    border-left: 4px solid #2e844a;
+}
+
+.card-icon-wrapper {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+}
+
+.casual-icon {
+    background: #0176d3;
+}
+
+.sick-icon {
+    background: #fe9339;
+}
+
+.annual-icon {
+    background: #2e844a;
 }
 
 .balance-title {
-
-    font-size: .9rem;
-
-    color: #54698d;
-
+    font-size: 0.85rem;
+    color: #514f4d;
     font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
 }
 
 .balance-value {
+    font-size: 1.75rem;
+    font-weight: 700;
+    line-height: 1.2;
+    color: #181818;
+}
 
-    margin-top: .8rem;
-
-    font-size: 2rem;
-
-    font-weight: bold;
-
-    color: #0176d3;
+.balance-subtitle {
+    font-size: 0.75rem;
+    color: #706e6b;
 }
 
 .form-container {
-    max-width: 700px;
-    margin: 2rem auto;
-    padding: 1.5rem;
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 0.5rem 1rem;
+}
+
+.duration-preview {
+    border-left: 4px solid #2e844a;
+    border-radius: 4px;
+    background: #f4fbf6;
+}
+
+.form-actions {
+    margin-top: 1.5rem;
+    padding-top: 1rem;
+    border-top: 1px solid #e5e5e5;
 }

@@ -1,23 +1,50 @@
 <template>
+    <!-- Modern SLDS Page Header -->
+    <div class="slds-page-header slds-page-header_record-home slds-m-bottom_medium">
+        <div class="slds-page-header__row">
+            <div class="slds-page-header__col-title">
+                <div class="slds-media slds-media_center">
+                    <div class="slds-media__figure">
+                        <lightning-icon
+                            icon-name="standard:employee_job"
+                            size="medium"
+                            alternative-text="Leave Management Portal">
+                        </lightning-icon>
+                    </div>
+                    <div class="slds-media__body">
+                        <div class="slds-page-header__name">
+                            <div class="slds-page-header__name-title">
+                                <h1>
+                                    <span class="slds-page-header__title slds-truncate" title="Employee Leave & Attendance Portal">
+                                        Employee Leave & Attendance Portal
+                                    </span>
+                                </h1>
+                            </div>
+                        </div>
+                        <p class="slds-page-header__name-meta slds-text-body_small slds-text-color_weak">
+                            Apply for time off, monitor leave balances, and review team approval requests
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 
-    <lightning-card title="Employee Leave Management" icon-name="standard:employee">
+    <!-- Main Tab Navigation -->
+    <lightning-tabset variant="scoped">
+        <!-- Tab 1: Apply Leave -->
+        <lightning-tab label="Apply Leave" icon-name="utility:new_window">
+            <c-leave-request-form onleaverequestcreated={handleLeaveCreated}></c-leave-request-form>
+        </lightning-tab>
 
-        <lightning-tabset>
+        <!-- Tab 2: My Leave Requests -->
+        <lightning-tab label="My Leave Requests" icon-name="utility:list">
+            <c-leave-request-list onleavecancelled={handleLeaveCancelled}></c-leave-request-list>
+        </lightning-tab>
 
-            <lightning-tab label="Apply Leave">
-
-                <c-leave-request-form></c-leave-request-form>
-
-            </lightning-tab>
-
-            <lightning-tab label="My Leave Requests">
-
-                <c-leave-request-list></c-leave-request-list>
-
-            </lightning-tab>
-
-        </lightning-tabset>
-
-    </lightning-card>
-
+        <!-- Tab 3: Manager Approvals -->
+        <lightning-tab label="Manager Approvals" icon-name="utility:approval">
+            <c-manager-leave-approval onleaveapprovalprocessed={handleApprovalProcessed}></c-manager-leave-approval>
+        </lightning-tab>
+    </lightning-tabset>
 </template>

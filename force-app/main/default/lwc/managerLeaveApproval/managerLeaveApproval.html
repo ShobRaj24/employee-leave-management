@@ -1,15 +1,54 @@
 <template>
-    <lightning-card title="Pending Leave Requests" icon-name="standard:employee_job">
-        <div class="slds-p-around_medium">
+    <lightning-card title="Pending Manager Approvals" icon-name="standard:employee_job">
+        <!-- Header Actions -->
+        <div slot="actions" class="slds-grid slds-grid_vertical-align-center">
+            <lightning-badge label={recordCountLabel} class="slds-m-right_small"></lightning-badge>
+            <lightning-button-icon
+                icon-name="utility:refresh"
+                alternative-text="Refresh Approvals"
+                title="Refresh Approvals"
+                variant="border-filled"
+                onclick={refreshApprovals}>
+            </lightning-button-icon>
+        </div>
 
-            <lightning-datatable
-                key-field="Id"
-                data={leaveRequests}
-                columns={columns}
-                hide-checkbox-column
-                onrowaction={handleRowAction}>
-            </lightning-datatable>
+        <div class="slds-p-around_medium slds-is-relative">
+            <!-- Loading Spinner -->
+            <template lwc:if={isLoading}>
+                <lightning-spinner alternative-text="Loading approvals..." size="small"></lightning-spinner>
+            </template>
 
+            <!-- Search Toolbar -->
+            <div class="slds-m-bottom_medium slds-size_1-of-1 slds-medium-size_1-of-2 slds-large-size_1-of-3">
+                <lightning-input
+                    type="search"
+                    label="Search Pending Approvals"
+                    placeholder="Search by employee, type, or reason..."
+                    value={searchTerm}
+                    onchange={handleSearchChange}>
+                </lightning-input>
+            </div>
+
+            <!-- Approvals Table or Empty State -->
+            <template lwc:if={hasRecords}>
+                <div class="slds-scrollable_x">
+                    <c-status-datatable
+                        key-field="Id"
+                        data={filteredLeaveRequests}
+                        columns={columns}
+                        hide-checkbox-column
+                        onrowaction={handleRowAction}>
+                    </c-status-datatable>
+                </div>
+            </template>
+
+            <template lwc:else>
+                <div class="slds-box slds-theme_shade slds-text-align_center slds-p-around_x-large slds-m-top_small">
+                    <lightning-icon icon-name="utility:approval" size="large" variant="success" class="slds-m-bottom_small"></lightning-icon>
+                    <h3 class="slds-text-heading_small slds-m-bottom_xx-small">All Caught Up!</h3>
+                    <p class="slds-text-body_regular slds-text-color_weak">There are no pending leave requests awaiting your review.</p>
+                </div>
+            </template>
         </div>
     </lightning-card>
 </template>

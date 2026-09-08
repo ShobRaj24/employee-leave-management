@@ -1,40 +1,39 @@
-.badge{
-
-    padding:6px 14px;
-
-    border-radius:20px;
-
-    color:white;
-
-    font-weight:600;
-
-    font-size:12px;
-
-    display:inline-block;
-
-    text-align:center;
-
-    min-width:90px;
+.badge {
+    padding: 4px 12px;
+    border-radius: 12px;
+    font-weight: 600;
+    font-size: 0.75rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    min-width: 80px;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+    border: 1px solid transparent;
 }
 
-.approved{
-
-    background:#2e844a;
+.approved {
+    background-color: #e6f6ec;
+    color: #1a7e44;
+    border-color: #bbf0cb;
 }
 
-.pending{
-
-    background:#ffb75d;
-
-    color:black;
+.pending {
+    background-color: #fef7e6;
+    color: #925807;
+    border-color: #fce19b;
 }
 
-.rejected{
-
-    background:#ba0517;
+.rejected {
+    background-color: #fdf0f0;
+    color: #ba0517;
+    border-color: #f8c9c9;
 }
 
-.cancelled{
-
-    background:#5c5c5c;
+.cancelled {
+    background-color: #f3f3f4;
+    color: #5c5c5c;
+    border-color: #d8dde6;
 }

@@ -1,13 +1,67 @@
 <template>
-    <lightning-card title="My Leave Requests">
+    <lightning-card title="My Leave Requests" icon-name="standard:record">
+        <!-- Card Header Actions -->
+        <div slot="actions" class="slds-grid slds-grid_vertical-align-center">
+            <lightning-badge label={recordCountLabel} class="slds-m-right_small"></lightning-badge>
+            <lightning-button-icon
+                icon-name="utility:refresh"
+                alternative-text="Refresh Requests"
+                title="Refresh Requests"
+                variant="border-filled"
+                onclick={refreshList}>
+            </lightning-button-icon>
+        </div>
 
-        <c-status-datatable
-            key-field="Id"
-            data={leaveRequests}
-            columns={columns}
-            hide-checkbox-column
-            onrowaction={handleRowAction}>
-        </c-status-datatable>
+        <div class="slds-p-around_medium slds-is-relative">
+            <!-- Loading Spinner -->
+            <template lwc:if={isLoading}>
+                <lightning-spinner alternative-text="Loading requests..." size="small"></lightning-spinner>
+            </template>
 
+            <!-- Search and Filter Bar -->
+            <div class="slds-grid slds-wrap slds-gutters slds-grid_vertical-align-end slds-m-bottom_medium">
+                <!-- Search Input -->
+                <div class="slds-col slds-size_1-of-1 slds-medium-size_1-of-2 slds-large-size_1-of-3 slds-m-bottom_x-small">
+                    <lightning-input
+                        type="search"
+                        label="Search Requests"
+                        placeholder="Search by type, reason, or status..."
+                        value={searchTerm}
+                        onchange={handleSearchChange}>
+                    </lightning-input>
+                </div>
+
+                <!-- Status Filter Combobox -->
+                <div class="slds-col slds-size_1-of-1 slds-medium-size_1-of-2 slds-large-size_1-of-4 slds-m-bottom_x-small">
+                    <lightning-combobox
+                        label="Filter by Status"
+                        value={selectedStatusFilter}
+                        options={statusOptions}
+                        onchange={handleFilterChange}>
+                    </lightning-combobox>
+                </div>
+            </div>
+
+            <!-- Datatable / Empty State -->
+            <template lwc:if={hasRecords}>
+                <div class="slds-scrollable_x">
+                    <c-status-datatable
+                        key-field="Id"
+                        data={filteredLeaveRequests}
+                        columns={columns}
+                        hide-checkbox-column
+                        onrowaction={handleRowAction}>
+                    </c-status-datatable>
+                </div>
+            </template>
+
+            <template lwc:else>
+                <div class="slds-box slds-theme_shade slds-text-align_center slds-p-around_x-large slds-m-top_small">
+                    <lightning-icon icon-name="utility:inbox" size="large" variant="neutral" class="slds-m-bottom_small"></lightning-icon>
+                    <h3 class="slds-text-heading_small slds-m-bottom_xx-small">No Leave Requests Found</h3>
+                    <p class="slds-text-body_regular slds-text-color_weak">{noRecordsMessage}</p>
+                </div>
+            </template>
+        </div>
     </lightning-card>
 </template>

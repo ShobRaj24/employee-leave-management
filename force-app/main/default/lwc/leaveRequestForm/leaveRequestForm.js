@@ -1,54 +1,24 @@
-import { LightningElement, wire } from 'lwc';
+import { LightningElement, wire, api } from 'lwc';
 import { getObjectInfo, getPicklistValues } from 'lightning/uiObjectInfoApi';
 import { getRecord } from 'lightning/uiRecordApi';
+import { refreshApex } from '@salesforce/apex';
+import { ShowToastEvent } from 'lightning/platformShowToastEvent';
 
 import LEAVE_REQUEST_OBJECT from '@salesforce/schema/Leave_Request__c';
 import LEAVE_TYPE_FIELD from '@salesforce/schema/Leave_Request__c.Leave_Type__c';
 import NAME_FIELD from '@salesforce/schema/User.Name';
-import { refreshApex } from '@salesforce/apex';
 import USER_ID from '@salesforce/user/Id';
-import cancelLeaveRequest from '@salesforce/apex/LeaveRequestController.cancelLeaveRequest';
 import createLeaveRequest from '@salesforce/apex/LeaveRequestController.createLeaveRequest';
-import getMyLeaveRequests from '@salesforce/apex/LeaveRequestController.getMyLeaveRequests';
-import LightningConfirm from 'lightning/confirm';
-import { ShowToastEvent } from 'lightning/platformShowToastEvent';
 import getLeaveBalance from '@salesforce/apex/LeaveRequestController.getLeaveBalance';
 
-function getRowActions(row, doneCallback) {
-
-    const actions = [];
-
-    if (row.Status__c === 'Pending') {
-        actions.push({
-            label: 'Cancel',
-            name: 'cancel'
-        });
-    }
-
-    doneCallback(actions);
-}
-const COLUMNS = [
-    { label: 'Leave Type', fieldName: 'Leave_Type__c', type: 'text' },
-    { label: 'Start Date', fieldName: 'Start_Date__c', type: 'date' },
-    { label: 'End Date', fieldName: 'End_Date__c', type: 'date' },
-    { label: 'Total Days', fieldName: 'Total_Days__c', type: 'number' },
-    { label: 'Status', fieldName: 'Status__c', type: 'text' },
-    { label: 'Manager Comments', fieldName: 'Manager_Comments__c', type: 'text' },
-    {
-    type: 'action',
-    typeAttributes: {
-        rowActions: getRowActions
-    }
-}
-];
-
 export default class LeaveRequestForm extends LightningElement {
-    
-    columns = COLUMNS;
-    leaveRequests = [];
-    error;
-    wiredLeaveRequestsResult;
-    leaveBalance={Id:'',casualLeave: 0, sickLeave: 0, earnedLeave: 0};
+    employeeName = '';
+    leaveTypeOptions = [];
+    leaveBalance = null;
+    wiredLeaveBalanceResult;
+    isSubmitting = false;
+    calculatedDays = 0;
+
     leaveRequest = {
         employeeId: '',
         leaveType: '',
@@ -57,40 +27,41 @@ export default class LeaveRequestForm extends LightningElement {
         reason: ''
     };
 
- @wire(getLeaveBalance)
-wiredLeaveBalance({ data, error }) {
-    if (data) {
-        this.leaveBalance = data;
-        this.error = undefined;
-        
-    } else if (error) {
-        this.error = error;
-        this.leaveBalance = undefined;
-        
+    // Auto population of User
+    @wire(getRecord, {
+        recordId: USER_ID,
+        fields: [NAME_FIELD]
+    })
+    wiredUser({ data, error }) {
+        if (data) {
+            this.employeeName = data.fields.Name.value;
+            this.leaveRequest = {
+                ...this.leaveRequest,
+                employeeId: data.id
+            };
+        } else if (error) {
+            console.error('User Error:', error);
+        }
     }
-}
-    //Get Leave records
-    @wire(getMyLeaveRequests)
-    wiredLeaveRequests(result) {
-        this.wiredLeaveRequestsResult = result;
+
+    // Leave Balance Wire
+    @wire(getLeaveBalance)
+    wiredBalance(result) {
+        this.wiredLeaveBalanceResult = result;
         const { data, error } = result;
         if (data) {
-            this.leaveRequests = data;
-            this.error=undefined;
-        }
-        else if (error) {
-            this.error = error;
-            this.leaveRequests = [];
+            this.leaveBalance = data;
+        } else if (error) {
+            console.error('Leave Balance Error:', error);
+            this.leaveBalance = null;
         }
     }
-    employeeName = '';
-    leaveTypeOptions = [];
 
-    //Get Leave Request object data
+    // Get Leave Request object info for picklist
     @wire(getObjectInfo, { objectApiName: LEAVE_REQUEST_OBJECT })
     objectInfo;
 
-    //Get Picklist values for Leave Type field
+    // Get Picklist values for Leave Type field
     @wire(getPicklistValues, {
         recordTypeId: '$objectInfo.data.defaultRecordTypeId',
         fieldApiName: LEAVE_TYPE_FIELD
@@ -103,119 +74,151 @@ wiredLeaveBalance({ data, error }) {
         }
     }
 
-    // Auto population of User
-    @wire(getRecord, {
-        recordId: USER_ID,
-        fields: [NAME_FIELD]
-    })
-    wiredUser({ data, error }) {
-        if (data) {
-            this.employeeName = data.fields.Name.value;
-
-            this.leaveRequest = {
-                ...this.leaveRequest,
-                employeeId: data.id
-            };
-        } else if (error) {
-            console.error('User Error:', error);
-        }
+    get todayDate() {
+        return new Date().toISOString().slice(0, 10);
     }
 
-    connectedCallback() {
-        console.log('Component Loaded');
+    get casualBalance() {
+        return this.leaveBalance?.Casual_Leave__c ?? 0;
+    }
+
+    get sickBalance() {
+        return this.leaveBalance?.Sick_Leave__c ?? 0;
+    }
+
+    get annualBalance() {
+        return (
+            this.leaveBalance?.Annual_Leave__c ??
+            this.leaveBalance?.Earned_Leave__c ??
+            0
+        );
+    }
+
+    get durationText() {
+        if (this.calculatedDays <= 0) {
+            return '';
+        }
+        return `${this.calculatedDays} ${this.calculatedDays === 1 ? 'day' : 'days'}`;
+    }
+
+    get isDateRangeInvalid() {
+        if (!this.leaveRequest.startDate || !this.leaveRequest.endDate) {
+            return false;
+        }
+        return new Date(this.leaveRequest.startDate) > new Date(this.leaveRequest.endDate);
+    }
+
+    get isSubmitDisabled() {
+        return (
+            this.isSubmitting ||
+            this.isDateRangeInvalid ||
+            !this.leaveRequest.leaveType ||
+            !this.leaveRequest.startDate ||
+            !this.leaveRequest.endDate ||
+            !this.leaveRequest.reason?.trim()
+        );
+    }
+
+    @api
+    async refreshBalance() {
+        if (this.wiredLeaveBalanceResult) {
+            await refreshApex(this.wiredLeaveBalanceResult);
+        }
     }
 
     handleChange(event) {
         const { name, value } = event.target;
-
         this.leaveRequest = {
             ...this.leaveRequest,
             [name]: value
         };
+
+        if (name === 'startDate' || name === 'endDate') {
+            this.calculateDuration();
+        }
     }
-    
-async handleRowAction(event) {
 
-    const actionName = event.detail.action.name;
-    const row = event.detail.row;
+    calculateDuration() {
+        if (this.leaveRequest.startDate && this.leaveRequest.endDate) {
+            const start = new Date(this.leaveRequest.startDate);
+            const end = new Date(this.leaveRequest.endDate);
+            const diffTime = end.getTime() - start.getTime();
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+            this.calculatedDays = diffDays > 0 ? diffDays : 0;
+        } else {
+            this.calculatedDays = 0;
+        }
+    }
 
-    if (actionName === 'cancel') {
+    handleReset() {
+        this.leaveRequest = {
+            employeeId: this.leaveRequest.employeeId,
+            leaveType: '',
+            startDate: '',
+            endDate: '',
+            reason: ''
+        };
+        this.calculatedDays = 0;
+    }
 
-        const confirmed = await LightningConfirm.open({
-            message: 'Are you sure you want to cancel this leave request?',
-            variant: 'header',
-            label: 'Confirm Cancellation'
-        });
+    async handleSubmit() {
+        const allValid = [
+            ...this.template.querySelectorAll('lightning-input, lightning-combobox, lightning-textarea')
+        ].reduce((validSoFar, inputCmp) => {
+            inputCmp.reportValidity();
+            return validSoFar && inputCmp.checkValidity();
+        }, true);
 
-        if (!confirmed) {
+        if (!allValid || this.isDateRangeInvalid) {
+            this.dispatchEvent(
+                new ShowToastEvent({
+                    title: 'Incomplete Form',
+                    message: 'Please resolve all required fields and date errors before submitting.',
+                    variant: 'warning'
+                })
+            );
             return;
         }
 
+        this.isSubmitting = true;
         try {
-
-            await cancelLeaveRequest({
-                leaveRequestId: row.Id
+            await createLeaveRequest({
+                request: this.leaveRequest
             });
-
-            await refreshApex(this.wiredLeaveRequestsResult);
 
             this.dispatchEvent(
                 new ShowToastEvent({
-                    title: 'Success',
-                    message: 'Leave request cancelled successfully.',
+                    title: 'Application Submitted',
+                    message: 'Your leave request has been submitted successfully for approval.',
                     variant: 'success'
                 })
             );
 
+            this.handleReset();
+
+            if (this.wiredLeaveBalanceResult) {
+                await refreshApex(this.wiredLeaveBalanceResult);
+            }
+
+            // Notify parent / siblings of the new leave request
+            this.dispatchEvent(new CustomEvent('leaverequestcreated', { bubbles: true, composed: true }));
+
         } catch (error) {
+            const errorMsg =
+                error?.body?.message ||
+                error?.message ||
+                'An unexpected error occurred while submitting your leave request.';
 
             this.dispatchEvent(
                 new ShowToastEvent({
-                    title: 'Error',
-                    message: error.body?.message || 'Unable to cancel leave request.',
+                    title: 'Submission Failed',
+                    message: errorMsg,
                     variant: 'error'
                 })
             );
+            console.error('Leave submission error:', error);
+        } finally {
+            this.isSubmitting = false;
         }
     }
-}
-
-    async handleSubmit() {
-    try {
-        await createLeaveRequest({
-            request: this.leaveRequest
-        });
-
-        await refreshApex(this.wiredLeaveRequestsResult);
-
-        this.dispatchEvent(
-            new ShowToastEvent({
-                title: 'Success',
-                message: 'Leave request submitted successfully.',
-                variant: 'success'
-            })
-        );
-
-                this.leaveRequest = {
-            employeeId: this.leaveRequest.employeeId,
-            leaveType: '',
-            startDate: null,
-            endDate: null,
-            reason: ''
-        };
-
-    } catch (error) {
-
-    this.dispatchEvent(
-        new ShowToastEvent({
-            title: 'Error',
-            message: error.body?.message || 'Failed to submit leave request.',
-            variant: 'error'
-        })
-    );
-
-    console.error(error);
-}
-}
-
 }
