@@ -32,7 +32,16 @@ const COLUMNS = [
 
 function getRowActions(row, doneCallback) {
     const actions = [];
-    if (row.Status__c === 'Pending') {
+    const isPending = row.Status__c === 'Pending';
+
+    // Allow cancelling future or current approved leaves
+    let isFutureApproved = false;
+    if (row.Status__c === 'Approved' && row.Start_Date__c) {
+        const todayStr = new Date().toISOString().split('T')[0];
+        isFutureApproved = row.Start_Date__c >= todayStr;
+    }
+
+    if (isPending || isFutureApproved) {
         actions.push({
             label: 'Cancel Request',
             name: 'cancel',
@@ -145,10 +154,19 @@ export default class LeaveRequestList extends LightningElement {
         const row = event.detail.row;
 
         if (actionName === 'cancel') {
+            const isApproved = row.Status__c === 'Approved';
+            let confirmMessage = 'Are you sure you want to cancel this pending leave request?';
+            if (isApproved) {
+                const daysText = `${row.Total_Days__c} ${row.Total_Days__c === 1 ? 'day' : 'days'}`;
+                confirmMessage = row.Leave_Type__c === 'Work From Home'
+                    ? 'This approved Work From Home request will be cancelled. Are you sure?'
+                    : `This approved leave will be cancelled and ${daysText} will be refunded to your ${row.Leave_Type__c} balance. Are you sure?`;
+            }
+
             const confirmed = await LightningConfirm.open({
-                message: 'Are you sure you want to cancel this leave request?',
+                message: confirmMessage,
                 variant: 'header',
-                label: 'Confirm Cancellation'
+                label: isApproved ? 'Cancel Approved Leave' : 'Confirm Cancellation'
             });
 
             if (!confirmed) {
@@ -163,10 +181,16 @@ export default class LeaveRequestList extends LightningElement {
 
                 await refreshApex(this.wiredLeaveRequestsResult);
 
+                let successMsg = 'Leave request was cancelled successfully.';
+                if (isApproved && row.Leave_Type__c !== 'Work From Home') {
+                    const daysText = `${row.Total_Days__c} ${row.Total_Days__c === 1 ? 'day' : 'days'}`;
+                    successMsg = `Leave request cancelled and ${daysText} restored to your balance.`;
+                }
+
                 this.dispatchEvent(
                     new ShowToastEvent({
                         title: 'Request Cancelled',
-                        message: 'Leave request was cancelled successfully.',
+                        message: successMsg,
                         variant: 'success'
                     })
                 );

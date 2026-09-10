@@ -56,6 +56,8 @@ public with sharing class LeaveRequestService {
         applyDefaultValues(leaveRequest);
         saveLeaveRequest(leaveRequest);
 
+        LeaveNotificationService.notifyOnSubmission(leaveRequest);
+
         return leaveRequest.Id;
     }
 
@@ -122,23 +124,66 @@ public with sharing class LeaveRequestService {
     }
 
     /**
-     * Cancels a pending leave request.
+     * Cancels a pending or future approved leave request.
+     * Restores deducted balance if cancelling an approved leave.
      */
     public static void cancelLeaveRequest(Id leaveRequestId) {
         Leave_Request__c leaveRequest = [
-            SELECT Id, Status__c
+            SELECT Id,
+                   Employee__c,
+                   Employee__r.Name,
+                   Employee__r.ManagerId,
+                   Leave_Type__c,
+                   Start_Date__c,
+                   End_Date__c,
+                   Total_Days__c,
+                   Status__c
             FROM Leave_Request__c
             WHERE Id = :leaveRequestId
-              AND Employee__c = :UserInfo.getUserId()
             LIMIT 1
         ];
 
-        if (leaveRequest.Status__c != LeaveRequestConstants.STATUS_PENDING) {
-            throw createException('Only pending leave requests can be cancelled.');
+        Id currentUserId = UserInfo.getUserId();
+        Boolean isOwner = (leaveRequest.Employee__c == currentUserId);
+        Boolean isManager = (leaveRequest.Employee__r != null && leaveRequest.Employee__r.ManagerId == currentUserId);
+        Boolean isAdmin = isSystemAdmin();
+
+        if (!isOwner && !isManager && !isAdmin) {
+            throw createException('You are not authorized to cancel this leave request.');
+        }
+
+        if (leaveRequest.Status__c == LeaveRequestConstants.STATUS_CANCELLED) {
+            throw createException('This leave request is already cancelled.');
+        }
+
+        if (leaveRequest.Status__c == LeaveRequestConstants.STATUS_REJECTED) {
+            throw createException('Rejected leave requests cannot be cancelled.');
+        }
+
+        List<SObject> recordsToUpdate = new List<SObject>();
+        Boolean wasApproved = (leaveRequest.Status__c == LeaveRequestConstants.STATUS_APPROVED);
+
+        if (wasApproved) {
+            if (leaveRequest.Start_Date__c < Date.today()) {
+                throw createException('Cannot cancel an approved leave request that has already started or is in the past.');
+            }
+
+            // Restore leave balance (WFH does not consume balance)
+            if (leaveRequest.Leave_Type__c != LeaveRequestConstants.WORK_FROM_HOME) {
+                Leave_Balance__c balance = getLeaveBalance(leaveRequest.Employee__c);
+                if (balance != null) {
+                    restoreLeaveBalance(leaveRequest, balance);
+                    recordsToUpdate.add(balance);
+                }
+            }
         }
 
         leaveRequest.Status__c = LeaveRequestConstants.STATUS_CANCELLED;
-        update leaveRequest;
+        recordsToUpdate.add(leaveRequest);
+
+        update recordsToUpdate;
+
+        LeaveNotificationService.notifyOnCancellation(leaveRequest, wasApproved);
     }
 
     /**
@@ -245,6 +290,8 @@ public with sharing class LeaveRequestService {
         recordsToUpdate.add(leaveRequest);
 
         update recordsToUpdate;
+
+        LeaveNotificationService.notifyOnApproval(leaveRequest);
     }
 
     /**
@@ -280,6 +327,8 @@ public with sharing class LeaveRequestService {
         leaveRequest.Manager_Comments__c = managerComments.trim();
 
         update leaveRequest;
+
+        LeaveNotificationService.notifyOnRejection(leaveRequest);
     }
 
     private static void validateManagerAuthorization(Leave_Request__c leaveRequest, String action) {
@@ -351,6 +400,28 @@ public with sharing class LeaveRequestService {
         }
         else {
             throw createException('Invalid leave type: ' + leaveRequest.Leave_Type__c);
+        }
+    }
+
+    /**
+     * Restores leave balance after cancelling an approved leave request.
+     */
+    private static void restoreLeaveBalance(
+        Leave_Request__c leaveRequest,
+        Leave_Balance__c leaveBalance
+    ) {
+        if (leaveRequest.Leave_Type__c == LeaveRequestConstants.WORK_FROM_HOME) {
+            return;
+        }
+
+        if (leaveRequest.Leave_Type__c == LeaveRequestConstants.CASUAL_LEAVE) {
+            leaveBalance.Casual_Leave__c = (leaveBalance.Casual_Leave__c != null ? leaveBalance.Casual_Leave__c : 0) + leaveRequest.Total_Days__c;
+        }
+        else if (leaveRequest.Leave_Type__c == LeaveRequestConstants.SICK_LEAVE) {
+            leaveBalance.Sick_Leave__c = (leaveBalance.Sick_Leave__c != null ? leaveBalance.Sick_Leave__c : 0) + leaveRequest.Total_Days__c;
+        }
+        else if (leaveRequest.Leave_Type__c == LeaveRequestConstants.EARNED_LEAVE) {
+            leaveBalance.Annual_Leave__c = (leaveBalance.Annual_Leave__c != null ? leaveBalance.Annual_Leave__c : 0) + leaveRequest.Total_Days__c;
         }
     }
 }

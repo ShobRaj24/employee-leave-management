@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomNotificationType xmlns="http://soap.sforce.com/2006/04/metadata">
+    <customNotifTypeName>Leave_Notification</customNotifTypeName>
+    <description>Notifications for Leave Request submissions, approvals, rejections, and cancellations.</description>
+    <desktop>true</desktop>
+    <masterLabel>Leave Notification</masterLabel>
+    <mobile>true</mobile>
+</CustomNotificationType>

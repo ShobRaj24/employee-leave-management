@@ -336,4 +336,161 @@ private class LeaveRequestServiceTest {
         System.assertEquals(1, pending.size(), 'Should only return the Pending request');
         System.assertEquals(LeaveRequestConstants.STATUS_PENDING, pending[0].Status__c);
     }
+
+    /**
+     * Tests that cancelling an approved future leave restores the deducted balance.
+     */
+    @IsTest
+    static void testCancelApprovedFutureLeaveRestoresBalance() {
+        User manager = [SELECT Id FROM User WHERE LastName = 'mgr' LIMIT 1];
+        User employee = [SELECT Id FROM User WHERE LastName = 'emp' LIMIT 1];
+
+        Date monday = TestDataFactory.getNextWorkingMonday();
+        Leave_Request__c request = TestDataFactory.createLeaveRequest(
+            employee.Id,
+            LeaveRequestConstants.CASUAL_LEAVE,
+            monday,
+            monday.addDays(1), // 2 working days
+            LeaveRequestConstants.STATUS_PENDING
+        );
+
+        // Manager approves the request
+        System.runAs(manager) {
+            LeaveRequestController.approveLeaveRequest(request.Id);
+        }
+
+        // Verify balance deducted
+        Leave_Balance__c balanceBeforeCancel = [
+            SELECT Casual_Leave__c
+            FROM Leave_Balance__c
+            WHERE Employee__c = :employee.Id
+        ];
+        System.assertEquals(8, balanceBeforeCancel.Casual_Leave__c, 'Balance should be reduced from 10 to 8');
+
+        // Employee cancels the approved leave
+        Test.startTest();
+        System.runAs(employee) {
+            LeaveRequestController.cancelLeaveRequest(request.Id);
+        }
+        Test.stopTest();
+
+        // Verify status is Cancelled and balance restored to 10
+        Leave_Request__c updatedRequest = [
+            SELECT Status__c
+            FROM Leave_Request__c
+            WHERE Id = :request.Id
+        ];
+        System.assertEquals(LeaveRequestConstants.STATUS_CANCELLED, updatedRequest.Status__c);
+
+        Leave_Balance__c balanceAfterCancel = [
+            SELECT Casual_Leave__c
+            FROM Leave_Balance__c
+            WHERE Employee__c = :employee.Id
+        ];
+        System.assertEquals(10, balanceAfterCancel.Casual_Leave__c, 'Balance should be restored back to 10');
+    }
+
+    /**
+     * Tests that cancelling an approved past leave throws an exception.
+     */
+    @IsTest
+    static void testCancelApprovedPastLeaveThrowsException() {
+        User employee = [SELECT Id FROM User WHERE LastName = 'emp' LIMIT 1];
+
+        Date pastDate = Date.today().addDays(-5);
+        Leave_Request__c request = new Leave_Request__c(
+            Employee__c = employee.Id,
+            Leave_Type__c = LeaveRequestConstants.CASUAL_LEAVE,
+            Start_Date__c = pastDate,
+            End_Date__c = pastDate.addDays(1),
+            Total_Days__c = 2,
+            Status__c = LeaveRequestConstants.STATUS_APPROVED,
+            Reason__c = 'Past vacation'
+        );
+        insert request;
+
+        Test.startTest();
+        Boolean caught = false;
+        System.runAs(employee) {
+            try {
+                LeaveRequestController.cancelLeaveRequest(request.Id);
+            } catch (AuraHandledException e) {
+                caught = true;
+                System.assert(e.getMessage().contains('Cannot cancel an approved leave request that has already started'),
+                    'Expected past date message: ' + e.getMessage());
+            }
+        }
+        Test.stopTest();
+
+        System.assert(caught, 'Cancelling past approved leave must throw an exception');
+    }
+
+    /**
+     * Tests that cancelling an approved Work From Home leave does not change balance.
+     */
+    @IsTest
+    static void testCancelApprovedWfhDoesNotAlterBalance() {
+        User manager = [SELECT Id FROM User WHERE LastName = 'mgr' LIMIT 1];
+        User employee = [SELECT Id FROM User WHERE LastName = 'emp' LIMIT 1];
+
+        Date monday = TestDataFactory.getNextWorkingMonday();
+        Leave_Request__c request = TestDataFactory.createLeaveRequest(
+            employee.Id,
+            LeaveRequestConstants.WORK_FROM_HOME,
+            monday,
+            monday.addDays(1),
+            LeaveRequestConstants.STATUS_PENDING
+        );
+
+        System.runAs(manager) {
+            LeaveRequestController.approveLeaveRequest(request.Id);
+        }
+
+        Test.startTest();
+        System.runAs(employee) {
+            LeaveRequestController.cancelLeaveRequest(request.Id);
+        }
+        Test.stopTest();
+
+        Leave_Balance__c balance = [
+            SELECT Casual_Leave__c, Sick_Leave__c, Annual_Leave__c
+            FROM Leave_Balance__c
+            WHERE Employee__c = :employee.Id
+        ];
+        System.assertEquals(10, balance.Casual_Leave__c);
+        System.assertEquals(10, balance.Sick_Leave__c);
+        System.assertEquals(15, balance.Annual_Leave__c);
+    }
+
+    /**
+     * Tests that an unauthorized user cannot cancel another user's leave.
+     */
+    @IsTest
+    static void testUnauthorizedUserCannotCancel() {
+        User employee = [SELECT Id FROM User WHERE LastName = 'emp' LIMIT 1];
+        User otherUser = [SELECT Id FROM User WHERE LastName = 'other' LIMIT 1];
+
+        Date monday = TestDataFactory.getNextWorkingMonday();
+        Leave_Request__c request = TestDataFactory.createLeaveRequest(
+            employee.Id,
+            LeaveRequestConstants.CASUAL_LEAVE,
+            monday,
+            monday.addDays(1),
+            LeaveRequestConstants.STATUS_PENDING
+        );
+
+        Test.startTest();
+        Boolean caught = false;
+        System.runAs(otherUser) {
+            try {
+                LeaveRequestController.cancelLeaveRequest(request.Id);
+            } catch (AuraHandledException e) {
+                caught = true;
+                System.assert(e.getMessage().contains('not authorized'), 'Expected authorization error');
+            }
+        }
+        Test.stopTest();
+
+        System.assert(caught, 'Unauthorized user should not be able to cancel leave');
+    }
 }
