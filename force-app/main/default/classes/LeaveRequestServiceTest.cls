@@ -3,6 +3,13 @@ private class LeaveRequestServiceTest {
 
     @TestSetup
     static void setup() {
+        System.runAs(new User(Id = UserInfo.getUserId())) {
+            User manager = TestDataFactory.createTestUser('mgr', null);
+            TestDataFactory.createTestUser('emp', manager.Id);
+            TestDataFactory.createTestUser('other', null);
+        }
+
+        User employee = [SELECT Id FROM User WHERE LastName = 'emp' LIMIT 1];
 
         TestDataFactory.createLeaveBalance(
             UserInfo.getUserId(),
@@ -10,23 +17,32 @@ private class LeaveRequestServiceTest {
             10,
             15
         );
+
+        TestDataFactory.createLeaveBalance(
+            employee.Id,
+            10,
+            10,
+            15
+        );
     }
 
     /**
-     * Tests successful leave request creation.
+     * Tests successful leave request creation on working days.
      */
     @IsTest
     static void testCreateLeaveRequestSuccess() {
+        Date monday = TestDataFactory.getNextWorkingMonday();
+        Date wednesday = monday.addDays(2);
 
         LeaveRequestDTO dto = TestDataFactory.createDTO(
             UserInfo.getUserId(),
             LeaveRequestConstants.CASUAL_LEAVE,
-            Date.today().addDays(1),
-            Date.today().addDays(3)
+            monday,
+            wednesday
         );
 
         Test.startTest();
-        Id leaveRequestId = LeaveRequestService.createLeaveRequest(dto);
+        Id leaveRequestId = LeaveRequestController.createLeaveRequest(dto);
         Test.stopTest();
 
         Leave_Request__c leaveRequest = [
@@ -38,25 +54,56 @@ private class LeaveRequestServiceTest {
             WHERE Id = :leaveRequestId
         ];
 
-        System.assertEquals(
+        System.assertEquals(UserInfo.getUserId(), leaveRequest.Employee__c);
+        System.assertEquals(LeaveRequestConstants.CASUAL_LEAVE, leaveRequest.Leave_Type__c);
+        System.assertEquals(LeaveRequestConstants.STATUS_PENDING, leaveRequest.Status__c);
+        System.assertEquals(3, leaveRequest.Total_Days__c);
+    }
+
+    /**
+     * Tests that working days calculation excludes Saturday and Sunday.
+     */
+    @IsTest
+    static void testWorkingDaysCalculationExcludesWeekends() {
+        Date monday = TestDataFactory.getNextWorkingMonday();
+        Date friday = monday.addDays(4);
+        Date nextMonday = monday.addDays(7);
+
+        // Friday to next Monday is 4 calendar days, but only 2 working days (Fri + Mon)
+        Decimal workingDays = LeaveRequestService.calculateWorkingDays(friday, nextMonday);
+        System.assertEquals(2, workingDays, 'Weekend days (Saturday and Sunday) should be excluded');
+
+        // Saturday to Sunday only should be 0 working days
+        Date saturday = monday.addDays(5);
+        Date sunday = monday.addDays(6);
+        Decimal weekendOnly = LeaveRequestService.calculateWorkingDays(saturday, sunday);
+        System.assertEquals(0, weekendOnly, 'Weekend-only period should have 0 working days');
+    }
+
+    /**
+     * Tests that applying for leave in the past throws an exception.
+     */
+    @IsTest
+    static void testPastDateValidationThrowsException() {
+        Date yesterday = Date.today().addDays(-1);
+
+        LeaveRequestDTO dto = TestDataFactory.createDTO(
             UserInfo.getUserId(),
-            leaveRequest.Employee__c
-        );
-
-        System.assertEquals(
             LeaveRequestConstants.CASUAL_LEAVE,
-            leaveRequest.Leave_Type__c
+            yesterday,
+            yesterday
         );
 
-        System.assertEquals(
-            LeaveRequestConstants.STATUS_PENDING,
-            leaveRequest.Status__c
-        );
+        Test.startTest();
+        Boolean caught = false;
+        try {
+            LeaveRequestController.createLeaveRequest(dto);
+        } catch (AuraHandledException e) {
+            caught = true;
+        }
+        Test.stopTest();
 
-        System.assertEquals(
-            3,
-            leaveRequest.Total_Days__c
-        );
+        System.assert(caught, 'Applying for a past date must throw an exception');
     }
 
     /**
@@ -64,21 +111,22 @@ private class LeaveRequestServiceTest {
      */
     @IsTest
     static void testGetMyLeaveRequests() {
-
+        Date monday = TestDataFactory.getNextWorkingMonday();
         TestDataFactory.createLeaveRequest(
             UserInfo.getUserId(),
             LeaveRequestConstants.CASUAL_LEAVE,
-            Date.today(),
-            Date.today().addDays(1),
+            monday,
+            monday.addDays(1),
             LeaveRequestConstants.STATUS_PENDING
         );
 
         Test.startTest();
-        List<Leave_Request__c> requests =
-            LeaveRequestService.getMyLeaveRequests();
+        List<Leave_Request__c> requests = LeaveRequestController.getMyLeaveRequests();
+        Leave_Balance__c balance = LeaveRequestController.getLeaveBalance();
         Test.stopTest();
 
         System.assertEquals(1, requests.size());
+        System.assertNotEquals(null, balance);
     }
 
     /**
@@ -86,18 +134,17 @@ private class LeaveRequestServiceTest {
      */
     @IsTest
     static void testCancelLeaveRequest() {
-
-        Leave_Request__c request =
-            TestDataFactory.createLeaveRequest(
-                UserInfo.getUserId(),
-                LeaveRequestConstants.CASUAL_LEAVE,
-                Date.today(),
-                Date.today().addDays(2),
-                LeaveRequestConstants.STATUS_PENDING
-            );
+        Date monday = TestDataFactory.getNextWorkingMonday();
+        Leave_Request__c request = TestDataFactory.createLeaveRequest(
+            UserInfo.getUserId(),
+            LeaveRequestConstants.CASUAL_LEAVE,
+            monday,
+            monday.addDays(2),
+            LeaveRequestConstants.STATUS_PENDING
+        );
 
         Test.startTest();
-        LeaveRequestService.cancelLeaveRequest(request.Id);
+        LeaveRequestController.cancelLeaveRequest(request.Id);
         Test.stopTest();
 
         request = [
@@ -106,33 +153,34 @@ private class LeaveRequestServiceTest {
             WHERE Id = :request.Id
         ];
 
-        System.assertEquals(
-            LeaveRequestConstants.STATUS_CANCELLED,
-            request.Status__c
-        );
+        System.assertEquals(LeaveRequestConstants.STATUS_CANCELLED, request.Status__c);
     }
 
     /**
-     * Tests approving a leave request.
+     * Tests manager approval with balance deduction and audit trail.
      */
     @IsTest
-    static void testApproveLeaveRequest() {
+    static void testManagerApproveLeaveRequest() {
+        User manager = [SELECT Id FROM User WHERE LastName = 'mgr' LIMIT 1];
+        User employee = [SELECT Id FROM User WHERE LastName = 'emp' LIMIT 1];
 
-        Leave_Request__c request =
-            TestDataFactory.createLeaveRequest(
-                UserInfo.getUserId(),
-                LeaveRequestConstants.CASUAL_LEAVE,
-                Date.today(),
-                Date.today().addDays(2),
-                LeaveRequestConstants.STATUS_PENDING
-            );
+        Date monday = TestDataFactory.getNextWorkingMonday();
+        Leave_Request__c request = TestDataFactory.createLeaveRequest(
+            employee.Id,
+            LeaveRequestConstants.CASUAL_LEAVE,
+            monday,
+            monday.addDays(1), // 2 working days
+            LeaveRequestConstants.STATUS_PENDING
+        );
 
         Test.startTest();
-        LeaveRequestService.approveLeaveRequest(request.Id);
+        System.runAs(manager) {
+            LeaveRequestController.approveLeaveRequest(request.Id);
+        }
         Test.stopTest();
 
         request = [
-            SELECT Status__c
+            SELECT Status__c, Approved_By__c
             FROM Leave_Request__c
             WHERE Id = :request.Id
         ];
@@ -140,57 +188,152 @@ private class LeaveRequestServiceTest {
         Leave_Balance__c balance = [
             SELECT Casual_Leave__c
             FROM Leave_Balance__c
-            WHERE Employee__c = :UserInfo.getUserId()
+            WHERE Employee__c = :employee.Id
         ];
 
-        System.assertEquals(
-            LeaveRequestConstants.STATUS_APPROVED,
-            request.Status__c
-        );
-
-        System.assertEquals(
-            7,
-            balance.Casual_Leave__c
-        );
+        System.assertEquals(LeaveRequestConstants.STATUS_APPROVED, request.Status__c);
+        System.assertEquals(manager.Id, request.Approved_By__c, 'Approved_By__c should record manager Id');
+        System.assertEquals(8, balance.Casual_Leave__c, 'Balance should be deducted by 2 days');
     }
 
     /**
-     * Tests rejecting a leave request.
+     * Tests that an unauthorized user cannot approve another employee's request.
      */
     @IsTest
-    static void testRejectLeaveRequest() {
+    static void testUnauthorizedUserCannotApprove() {
+        User otherUser = [SELECT Id FROM User WHERE LastName = 'other' LIMIT 1];
+        User employee = [SELECT Id FROM User WHERE LastName = 'emp' LIMIT 1];
 
-        Leave_Request__c request =
-            TestDataFactory.createLeaveRequest(
-                UserInfo.getUserId(),
-                LeaveRequestConstants.SICK_LEAVE,
-                Date.today(),
-                Date.today(),
-                LeaveRequestConstants.STATUS_PENDING
-            );
+        Date monday = TestDataFactory.getNextWorkingMonday();
+        Leave_Request__c request = TestDataFactory.createLeaveRequest(
+            employee.Id,
+            LeaveRequestConstants.CASUAL_LEAVE,
+            monday,
+            monday.addDays(1),
+            LeaveRequestConstants.STATUS_PENDING
+        );
 
         Test.startTest();
-        LeaveRequestService.rejectLeaveRequest(
-            request.Id,
-            'Insufficient staffing'
+        Boolean exceptionCaught = false;
+        System.runAs(otherUser) {
+            try {
+                LeaveRequestController.approveLeaveRequest(request.Id);
+            } catch (AuraHandledException e) {
+                exceptionCaught = true;
+            }
+        }
+        Test.stopTest();
+
+        System.assert(exceptionCaught, 'Non-manager user must not be authorized to approve leave');
+    }
+
+    /**
+     * Tests Work From Home request approval without deducting balance.
+     */
+    @IsTest
+    static void testWorkFromHomeNoBalanceDeduction() {
+        User manager = [SELECT Id FROM User WHERE LastName = 'mgr' LIMIT 1];
+        User employee = [SELECT Id FROM User WHERE LastName = 'emp' LIMIT 1];
+
+        Date monday = TestDataFactory.getNextWorkingMonday();
+        Leave_Request__c request = TestDataFactory.createLeaveRequest(
+            employee.Id,
+            LeaveRequestConstants.WORK_FROM_HOME,
+            monday,
+            monday.addDays(1),
+            LeaveRequestConstants.STATUS_PENDING
         );
+
+        Test.startTest();
+        System.runAs(manager) {
+            LeaveRequestController.approveLeaveRequest(request.Id);
+        }
+        Test.stopTest();
+
+        Leave_Balance__c balance = [
+            SELECT Casual_Leave__c, Sick_Leave__c, Annual_Leave__c
+            FROM Leave_Balance__c
+            WHERE Employee__c = :employee.Id
+        ];
+
+        // All balances should remain untouched
+        System.assertEquals(10, balance.Casual_Leave__c);
+        System.assertEquals(10, balance.Sick_Leave__c);
+        System.assertEquals(15, balance.Annual_Leave__c);
+    }
+
+    /**
+     * Tests manager rejection with comments.
+     */
+    @IsTest
+    static void testManagerRejectLeaveRequest() {
+        User manager = [SELECT Id FROM User WHERE LastName = 'mgr' LIMIT 1];
+        User employee = [SELECT Id FROM User WHERE LastName = 'emp' LIMIT 1];
+
+        Date monday = TestDataFactory.getNextWorkingMonday();
+        Leave_Request__c request = TestDataFactory.createLeaveRequest(
+            employee.Id,
+            LeaveRequestConstants.SICK_LEAVE,
+            monday,
+            monday,
+            LeaveRequestConstants.STATUS_PENDING
+        );
+
+        Test.startTest();
+        System.runAs(manager) {
+            LeaveRequestController.rejectLeaveRequest(
+                request.Id,
+                'Project deadline on that day'
+            );
+        }
         Test.stopTest();
 
         request = [
-            SELECT Status__c,
-                   Manager_Comments__c
+            SELECT Status__c, Manager_Comments__c
             FROM Leave_Request__c
             WHERE Id = :request.Id
         ];
 
-        System.assertEquals(
-            LeaveRequestConstants.STATUS_REJECTED,
-            request.Status__c
+        System.assertEquals(LeaveRequestConstants.STATUS_REJECTED, request.Status__c);
+        System.assertEquals('Project deadline on that day', request.Manager_Comments__c);
+    }
+
+    /**
+     * Tests that getPendingLeaveRequests only returns Pending requests for managed employees.
+     */
+    @IsTest
+    static void testGetPendingLeaveRequestsFilter() {
+        User manager = [SELECT Id FROM User WHERE LastName = 'mgr' LIMIT 1];
+        User employee = [SELECT Id FROM User WHERE LastName = 'emp' LIMIT 1];
+
+        Date monday = TestDataFactory.getNextWorkingMonday();
+
+        // 1 pending request
+        TestDataFactory.createLeaveRequest(
+            employee.Id,
+            LeaveRequestConstants.CASUAL_LEAVE,
+            monday,
+            monday.addDays(1),
+            LeaveRequestConstants.STATUS_PENDING
         );
 
-        System.assertEquals(
-            'Insufficient staffing',
-            request.Manager_Comments__c
+        // 1 already approved request
+        TestDataFactory.createLeaveRequest(
+            employee.Id,
+            LeaveRequestConstants.SICK_LEAVE,
+            monday.addDays(3),
+            monday.addDays(4),
+            LeaveRequestConstants.STATUS_APPROVED
         );
+
+        Test.startTest();
+        List<Leave_Request__c> pending;
+        System.runAs(manager) {
+            pending = LeaveRequestController.getPendingLeaveRequests();
+        }
+        Test.stopTest();
+
+        System.assertEquals(1, pending.size(), 'Should only return the Pending request');
+        System.assertEquals(LeaveRequestConstants.STATUS_PENDING, pending[0].Status__c);
     }
 }

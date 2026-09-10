@@ -98,7 +98,7 @@ export default class LeaveRequestForm extends LightningElement {
         if (this.calculatedDays <= 0) {
             return '';
         }
-        return `${this.calculatedDays} ${this.calculatedDays === 1 ? 'day' : 'days'}`;
+        return `${this.calculatedDays} working ${this.calculatedDays === 1 ? 'day' : 'days'}`;
     }
 
     get isDateRangeInvalid() {
@@ -112,6 +112,7 @@ export default class LeaveRequestForm extends LightningElement {
         return (
             this.isSubmitting ||
             this.isDateRangeInvalid ||
+            this.calculatedDays <= 0 ||
             !this.leaveRequest.leaveType ||
             !this.leaveRequest.startDate ||
             !this.leaveRequest.endDate ||
@@ -140,11 +141,26 @@ export default class LeaveRequestForm extends LightningElement {
 
     calculateDuration() {
         if (this.leaveRequest.startDate && this.leaveRequest.endDate) {
-            const start = new Date(this.leaveRequest.startDate);
-            const end = new Date(this.leaveRequest.endDate);
-            const diffTime = end.getTime() - start.getTime();
-            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
-            this.calculatedDays = diffDays > 0 ? diffDays : 0;
+            const [sYear, sMonth, sDay] = this.leaveRequest.startDate.split('-').map(Number);
+            const [eYear, eMonth, eDay] = this.leaveRequest.endDate.split('-').map(Number);
+            const start = new Date(sYear, sMonth - 1, sDay);
+            const end = new Date(eYear, eMonth - 1, eDay);
+
+            if (start > end) {
+                this.calculatedDays = 0;
+                return;
+            }
+
+            let workingDays = 0;
+            const cur = new Date(start);
+            while (cur <= end) {
+                const day = cur.getDay(); // 0 = Sunday, 6 = Saturday
+                if (day !== 0 && day !== 6) {
+                    workingDays++;
+                }
+                cur.setDate(cur.getDate() + 1);
+            }
+            this.calculatedDays = workingDays;
         } else {
             this.calculatedDays = 0;
         }

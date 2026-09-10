@@ -8,14 +8,13 @@ public class TestDataFactory {
         Id employeeId,
         Decimal casual,
         Decimal sick,
-        Decimal earned
+        Decimal annual
     ) {
-
         Leave_Balance__c balance = new Leave_Balance__c(
             Employee__c = employeeId,
             Casual_Leave__c = casual,
             Sick_Leave__c = sick,
-            Earned_Leave__c = earned
+            Annual_Leave__c = annual
         );
 
         insert balance;
@@ -32,16 +31,17 @@ public class TestDataFactory {
         Date endDate,
         String status
     ) {
+        Decimal workingDays = LeaveRequestService.calculateWorkingDays(startDate, endDate);
 
         Leave_Request__c leaveRequest = new Leave_Request__c(
             Employee__c = employeeId,
             Leave_Type__c = leaveType,
             Start_Date__c = startDate,
             End_Date__c = endDate,
-            Total_Days__c = startDate.daysBetween(endDate) + 1,
+            Total_Days__c = workingDays > 0 ? workingDays : 1,
             Applied_Date__c = Date.today(),
             Status__c = status,
-            Reason__c = 'Medical Leave'
+            Reason__c = 'Vacation Leave'
         );
 
         insert leaveRequest;
@@ -57,15 +57,61 @@ public class TestDataFactory {
         Date startDate,
         Date endDate
     ) {
-
         LeaveRequestDTO dto = new LeaveRequestDTO();
-
         dto.employeeId = employeeId;
         dto.leaveType = leaveType;
         dto.startDate = startDate;
         dto.endDate = endDate;
-        dto.reason = 'Medical Leave';
-
+        dto.reason = 'Vacation Leave';
         return dto;
+    }
+
+    /**
+     * Finds the next future Monday to ensure deterministic working day test ranges.
+     */
+    public static Date getNextWorkingMonday() {
+        Date d = Date.today().addDays(1);
+        Date refSunday = Date.newInstance(1900, 1, 7);
+        while (Math.mod(Math.abs(refSunday.daysBetween(d)), 7) != 1) { // 1 = Monday
+            d = d.addDays(1);
+        }
+        return d;
+    }
+
+    /**
+     * Creates a test user, optionally assigning a manager, and assigns Leave Management permissions.
+     */
+    public static User createTestUser(String alias, Id managerId) {
+        Profile p = [SELECT Id FROM Profile WHERE Name = 'Standard User' LIMIT 1];
+        String uniqueKey = String.valueOf(System.currentTimeMillis()) + Math.abs(Crypto.getRandomInteger());
+        User u = new User(
+            FirstName = 'Test',
+            LastName = alias,
+            Email = alias + '_' + uniqueKey + '@test.com',
+            Username = alias + '_' + uniqueKey + '@testleavemgmt.org',
+            Alias = alias.substring(0, Math.min(alias.length(), 8)),
+            ProfileId = p.Id,
+            TimeZoneSidKey = 'America/Los_Angeles',
+            LocaleSidKey = 'en_US',
+            EmailEncodingKey = 'UTF-8',
+            LanguageLocaleKey = 'en_US',
+            ManagerId = managerId
+        );
+        insert u;
+
+        List<PermissionSet> ps = [
+            SELECT Id
+            FROM PermissionSet
+            WHERE Name = 'Leave_Management_User'
+            LIMIT 1
+        ];
+        if (!ps.isEmpty()) {
+            insert new PermissionSetAssignment(
+                AssigneeId = u.Id,
+                PermissionSetId = ps[0].Id
+            );
+        }
+
+        return u;
     }
 }
