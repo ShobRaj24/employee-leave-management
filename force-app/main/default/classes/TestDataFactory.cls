@@ -67,6 +67,26 @@ public class TestDataFactory {
     }
 
     /**
+     * Creates a Half Day DTO for testing half-day leave creation.
+     */
+    public static LeaveRequestDTO createHalfDayDTO(
+        Id employeeId,
+        String leaveType,
+        Date leaveDate,
+        String halfDayPeriod
+    ) {
+        LeaveRequestDTO dto = new LeaveRequestDTO();
+        dto.employeeId = employeeId;
+        dto.leaveType = leaveType;
+        dto.startDate = leaveDate;
+        dto.endDate = leaveDate;
+        dto.reason = 'Doctor Appointment';
+        dto.isHalfDay = true;
+        dto.halfDayPeriod = halfDayPeriod;
+        return dto;
+    }
+
+    /**
      * Finds the next future Monday to ensure deterministic working day test ranges.
      */
     public static Date getNextWorkingMonday() {

@@ -19,12 +19,19 @@ export default class LeaveRequestForm extends LightningElement {
     isSubmitting = false;
     calculatedDays = 0;
 
+    halfDayPeriodOptions = [
+        { label: 'First Half (Morning)', value: 'First Half' },
+        { label: 'Second Half (Afternoon)', value: 'Second Half' }
+    ];
+
     leaveRequest = {
         employeeId: '',
         leaveType: '',
         startDate: '',
         endDate: '',
-        reason: ''
+        reason: '',
+        isHalfDay: false,
+        halfDayPeriod: 'First Half'
     };
 
     // Auto population of User
@@ -78,6 +85,10 @@ export default class LeaveRequestForm extends LightningElement {
         return new Date().toISOString().slice(0, 10);
     }
 
+    get startDateLabel() {
+        return this.leaveRequest.isHalfDay ? 'Leave Date' : 'Start Date';
+    }
+
     get casualBalance() {
         return this.leaveBalance?.Casual_Leave__c ?? 0;
     }
@@ -95,6 +106,15 @@ export default class LeaveRequestForm extends LightningElement {
     }
 
     get durationText() {
+        if (this.leaveRequest.isHalfDay) {
+            if (!this.leaveRequest.startDate) {
+                return '';
+            }
+            if (this.calculatedDays <= 0) {
+                return '0 working days (Weekend selected)';
+            }
+            return `0.5 working day (${this.leaveRequest.halfDayPeriod || 'First Half'})`;
+        }
         if (this.calculatedDays <= 0) {
             return '';
         }
@@ -102,6 +122,9 @@ export default class LeaveRequestForm extends LightningElement {
     }
 
     get isDateRangeInvalid() {
+        if (this.leaveRequest.isHalfDay) {
+            return false;
+        }
         if (!this.leaveRequest.startDate || !this.leaveRequest.endDate) {
             return false;
         }
@@ -109,6 +132,7 @@ export default class LeaveRequestForm extends LightningElement {
     }
 
     get isSubmitDisabled() {
+        const hasHalfDayPeriod = !this.leaveRequest.isHalfDay || !!this.leaveRequest.halfDayPeriod;
         return (
             this.isSubmitting ||
             this.isDateRangeInvalid ||
@@ -116,6 +140,7 @@ export default class LeaveRequestForm extends LightningElement {
             !this.leaveRequest.leaveType ||
             !this.leaveRequest.startDate ||
             !this.leaveRequest.endDate ||
+            !hasHalfDayPeriod ||
             !this.leaveRequest.reason?.trim()
         );
     }
@@ -128,18 +153,45 @@ export default class LeaveRequestForm extends LightningElement {
     }
 
     handleChange(event) {
-        const { name, value } = event.target;
+        const { name, value, type, checked } = event.target;
+        const fieldValue = type === 'checkbox' ? checked : value;
+
         this.leaveRequest = {
             ...this.leaveRequest,
-            [name]: value
+            [name]: fieldValue
         };
 
-        if (name === 'startDate' || name === 'endDate') {
+        if (name === 'isHalfDay') {
+            if (fieldValue) {
+                this.leaveRequest.endDate = this.leaveRequest.startDate;
+                if (!this.leaveRequest.halfDayPeriod) {
+                    this.leaveRequest.halfDayPeriod = 'First Half';
+                }
+            }
+            this.calculateDuration();
+        } else if (name === 'startDate') {
+            if (this.leaveRequest.isHalfDay) {
+                this.leaveRequest.endDate = fieldValue;
+            }
+            this.calculateDuration();
+        } else if (name === 'endDate' || name === 'halfDayPeriod') {
             this.calculateDuration();
         }
     }
 
     calculateDuration() {
+        if (this.leaveRequest.isHalfDay) {
+            if (this.leaveRequest.startDate) {
+                const [sYear, sMonth, sDay] = this.leaveRequest.startDate.split('-').map(Number);
+                const d = new Date(sYear, sMonth - 1, sDay);
+                const day = d.getDay(); // 0 = Sun, 6 = Sat
+                this.calculatedDays = (day === 0 || day === 6) ? 0 : 0.5;
+            } else {
+                this.calculatedDays = 0;
+            }
+            return;
+        }
+
         if (this.leaveRequest.startDate && this.leaveRequest.endDate) {
             const [sYear, sMonth, sDay] = this.leaveRequest.startDate.split('-').map(Number);
             const [eYear, eMonth, eDay] = this.leaveRequest.endDate.split('-').map(Number);
@@ -172,7 +224,9 @@ export default class LeaveRequestForm extends LightningElement {
             leaveType: '',
             startDate: '',
             endDate: '',
-            reason: ''
+            reason: '',
+            isHalfDay: false,
+            halfDayPeriod: 'First Half'
         };
         this.calculatedDays = 0;
     }

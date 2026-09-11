@@ -51,4 +51,28 @@ public class LeaveRequestConstants {
 
     public static final String WORK_FROM_HOME = 'Work From Home';
 
+    /*
+     * ---------------------------------------------------------
+     * Half Day Periods
+     * ---------------------------------------------------------
+     */
+
+    public static final String HALF_DAY_FIRST = 'First Half';
+
+    public static final String HALF_DAY_SECOND = 'Second Half';
+
+    /*
+     * ---------------------------------------------------------
+     * Year-End Rollover & Accrual Policy Defaults
+     * ---------------------------------------------------------
+     */
+
+    public static final Decimal MAX_ANNUAL_ROLLOVER = 5.0;
+
+    public static final Decimal ANNUAL_LEAVE_ALLOCATION = 15.0;
+
+    public static final Decimal CASUAL_LEAVE_ALLOCATION = 12.0;
+
+    public static final Decimal SICK_LEAVE_ALLOCATION = 10.0;
+
 }

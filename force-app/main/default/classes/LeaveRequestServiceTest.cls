@@ -493,4 +493,230 @@ private class LeaveRequestServiceTest {
 
         System.assert(caught, 'Unauthorized user should not be able to cancel leave');
     }
+
+    /**
+     * Tests successful creation of a half-day leave request.
+     */
+    @IsTest
+    static void testCreateHalfDayRequestSuccess() {
+        Date monday = TestDataFactory.getNextWorkingMonday();
+        LeaveRequestDTO dto = TestDataFactory.createHalfDayDTO(
+            UserInfo.getUserId(),
+            LeaveRequestConstants.CASUAL_LEAVE,
+            monday,
+            LeaveRequestConstants.HALF_DAY_FIRST
+        );
+
+        Test.startTest();
+        Id reqId = LeaveRequestController.createLeaveRequest(dto);
+        Test.stopTest();
+
+        Leave_Request__c req = [
+            SELECT Total_Days__c, Is_Half_Day__c, Half_Day_Period__c, Status__c
+            FROM Leave_Request__c
+            WHERE Id = :reqId
+        ];
+
+        System.assertEquals(0.5, req.Total_Days__c, 'Total days for half-day leave should be 0.5');
+        System.assertEquals(true, req.Is_Half_Day__c);
+        System.assertEquals(LeaveRequestConstants.HALF_DAY_FIRST, req.Half_Day_Period__c);
+        System.assertEquals(LeaveRequestConstants.STATUS_PENDING, req.Status__c);
+    }
+
+    /**
+     * Tests approving a half-day leave deducts 0.5 days from balance.
+     */
+    @IsTest
+    static void testApproveHalfDayDeductsHalfDay() {
+        User manager = [SELECT Id FROM User WHERE LastName = 'mgr' LIMIT 1];
+        User employee = [SELECT Id FROM User WHERE LastName = 'emp' LIMIT 1];
+
+        Date monday = TestDataFactory.getNextWorkingMonday();
+        LeaveRequestDTO dto = TestDataFactory.createHalfDayDTO(
+            employee.Id,
+            LeaveRequestConstants.CASUAL_LEAVE,
+            monday,
+            LeaveRequestConstants.HALF_DAY_SECOND
+        );
+
+        Id reqId;
+        System.runAs(employee) {
+            reqId = LeaveRequestController.createLeaveRequest(dto);
+        }
+
+        Test.startTest();
+        System.runAs(manager) {
+            LeaveRequestController.approveLeaveRequest(reqId);
+        }
+        Test.stopTest();
+
+        Leave_Balance__c bal = [
+            SELECT Casual_Leave__c
+            FROM Leave_Balance__c
+            WHERE Employee__c = :employee.Id
+        ];
+        // 10.0 - 0.5 = 9.5
+        System.assertEquals(9.5, bal.Casual_Leave__c, 'Balance should be reduced by 0.5 to 9.5');
+    }
+
+    /**
+     * Tests cancelling an approved half-day leave restores 0.5 days to balance.
+     */
+    @IsTest
+    static void testCancelApprovedHalfDayRestoresHalfDay() {
+        User manager = [SELECT Id FROM User WHERE LastName = 'mgr' LIMIT 1];
+        User employee = [SELECT Id FROM User WHERE LastName = 'emp' LIMIT 1];
+
+        Date monday = TestDataFactory.getNextWorkingMonday();
+        LeaveRequestDTO dto = TestDataFactory.createHalfDayDTO(
+            employee.Id,
+            LeaveRequestConstants.CASUAL_LEAVE,
+            monday,
+            LeaveRequestConstants.HALF_DAY_FIRST
+        );
+
+        Id reqId;
+        System.runAs(employee) {
+            reqId = LeaveRequestController.createLeaveRequest(dto);
+        }
+
+        System.runAs(manager) {
+            LeaveRequestController.approveLeaveRequest(reqId);
+        }
+
+        Test.startTest();
+        System.runAs(employee) {
+            LeaveRequestController.cancelLeaveRequest(reqId);
+        }
+        Test.stopTest();
+
+        Leave_Balance__c bal = [
+            SELECT Casual_Leave__c
+            FROM Leave_Balance__c
+            WHERE Employee__c = :employee.Id
+        ];
+        // 9.5 + 0.5 = 10.0
+        System.assertEquals(10.0, bal.Casual_Leave__c, 'Balance should be restored to 10.0');
+    }
+
+    /**
+     * Tests that First Half and Second Half on the same date can coexist.
+     */
+    @IsTest
+    static void testHalfDayMorningAndAfternoonCoexist() {
+        Date monday = TestDataFactory.getNextWorkingMonday();
+
+        LeaveRequestDTO morningDto = TestDataFactory.createHalfDayDTO(
+            UserInfo.getUserId(),
+            LeaveRequestConstants.CASUAL_LEAVE,
+            monday,
+            LeaveRequestConstants.HALF_DAY_FIRST
+        );
+
+        LeaveRequestDTO afternoonDto = TestDataFactory.createHalfDayDTO(
+            UserInfo.getUserId(),
+            LeaveRequestConstants.WORK_FROM_HOME,
+            monday,
+            LeaveRequestConstants.HALF_DAY_SECOND
+        );
+
+        Test.startTest();
+        Id morningId = LeaveRequestController.createLeaveRequest(morningDto);
+        Id afternoonId = LeaveRequestController.createLeaveRequest(afternoonDto);
+        Test.stopTest();
+
+        System.assertNotEquals(null, morningId);
+        System.assertNotEquals(null, afternoonId);
+    }
+
+    /**
+     * Tests that duplicate half-day requests for the same period are rejected.
+     */
+    @IsTest
+    static void testHalfDayDuplicatePeriodRejected() {
+        Date monday = TestDataFactory.getNextWorkingMonday();
+
+        LeaveRequestDTO dto1 = TestDataFactory.createHalfDayDTO(
+            UserInfo.getUserId(),
+            LeaveRequestConstants.CASUAL_LEAVE,
+            monday,
+            LeaveRequestConstants.HALF_DAY_FIRST
+        );
+
+        LeaveRequestDTO dto2 = TestDataFactory.createHalfDayDTO(
+            UserInfo.getUserId(),
+            LeaveRequestConstants.SICK_LEAVE,
+            monday,
+            LeaveRequestConstants.HALF_DAY_FIRST
+        );
+
+        LeaveRequestController.createLeaveRequest(dto1);
+
+        Test.startTest();
+        Boolean caught = false;
+        try {
+            LeaveRequestController.createLeaveRequest(dto2);
+        } catch (AuraHandledException e) {
+            caught = true;
+            System.assert(e.getMessage().contains('First Half'), 'Expected First Half conflict error: ' + e.getMessage());
+        }
+        Test.stopTest();
+
+        System.assert(caught, 'Duplicate half-day period on same date must be rejected');
+    }
+
+    /**
+     * Tests that a multi-day range with isHalfDay=true is rejected.
+     */
+    @IsTest
+    static void testHalfDayMultiDayRangeRejected() {
+        Date monday = TestDataFactory.getNextWorkingMonday();
+        LeaveRequestDTO dto = TestDataFactory.createHalfDayDTO(
+            UserInfo.getUserId(),
+            LeaveRequestConstants.CASUAL_LEAVE,
+            monday,
+            LeaveRequestConstants.HALF_DAY_FIRST
+        );
+        dto.endDate = monday.addDays(1); // Invalid: 2 days
+
+        Test.startTest();
+        Boolean caught = false;
+        try {
+            LeaveRequestController.createLeaveRequest(dto);
+        } catch (AuraHandledException e) {
+            caught = true;
+            System.assert(e.getMessage().contains('single day'), 'Expected single day error: ' + e.getMessage());
+        }
+        Test.stopTest();
+
+        System.assert(caught, 'Multi-day half-day request must be rejected');
+    }
+
+    /**
+     * Tests that a half-day on a weekend is rejected.
+     */
+    @IsTest
+    static void testHalfDayOnWeekendRejected() {
+        Date monday = TestDataFactory.getNextWorkingMonday();
+        Date saturday = monday.addDays(5);
+
+        LeaveRequestDTO dto = TestDataFactory.createHalfDayDTO(
+            UserInfo.getUserId(),
+            LeaveRequestConstants.CASUAL_LEAVE,
+            saturday,
+            LeaveRequestConstants.HALF_DAY_FIRST
+        );
+
+        Test.startTest();
+        Boolean caught = false;
+        try {
+            LeaveRequestController.createLeaveRequest(dto);
+        } catch (AuraHandledException e) {
+            caught = true;
+            System.assert(e.getMessage().contains('weekend'), 'Expected weekend error: ' + e.getMessage());
+        }
+        Test.stopTest();
+
+        System.assert(caught, 'Weekend half-day request must be rejected');
+    }
 }

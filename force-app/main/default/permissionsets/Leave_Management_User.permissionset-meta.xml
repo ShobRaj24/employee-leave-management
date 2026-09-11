@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="UTF-8"?>
+<?xml version="1.0" encoding="UTF-8"?>
 <PermissionSet xmlns="http://soap.sforce.com/2006/04/metadata">
     <description>Grants access to Leave Management custom objects and fields.</description>
     <hasActivationRequired>false</hasActivationRequired>
@@ -21,4 +21,14 @@
         <object>Leave_Request__c</object>
         <viewAllRecords>true</viewAllRecords>
     </objectPermissions>
+    <fieldPermissions>
+        <editable>true</editable>
+        <field>Leave_Request__c.Is_Half_Day__c</field>
+        <readable>true</readable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <editable>true</editable>
+        <field>Leave_Request__c.Half_Day_Period__c</field>
+        <readable>true</readable>
+    </fieldPermissions>
 </PermissionSet>

@@ -6,15 +6,16 @@ import { ShowToastEvent } from 'lightning/platformShowToastEvent';
 import LightningConfirm from 'lightning/confirm';
 
 const COLUMNS = [
-    { label: 'Leave Type', fieldName: 'Leave_Type__c', type: 'text', initialWidth: 160 },
-    { label: 'Start Date', fieldName: 'Start_Date__c', type: 'date', initialWidth: 130 },
-    { label: 'End Date', fieldName: 'End_Date__c', type: 'date', initialWidth: 130 },
-    { label: 'Total Days', fieldName: 'Total_Days__c', type: 'number', initialWidth: 110 },
+    { label: 'Leave Type', fieldName: 'Leave_Type__c', type: 'text', initialWidth: 150 },
+    { label: 'Start Date', fieldName: 'Start_Date__c', type: 'date', initialWidth: 120 },
+    { label: 'End Date', fieldName: 'End_Date__c', type: 'date', initialWidth: 120 },
+    { label: 'Days', fieldName: 'Total_Days__c', type: 'number', initialWidth: 90 },
+    { label: 'Period', fieldName: 'displayPeriod', type: 'text', initialWidth: 120 },
     {
         label: 'Status',
         fieldName: 'Status__c',
         type: 'statusBadge',
-        initialWidth: 140,
+        initialWidth: 130,
         typeAttributes: {
             status: {
                 fieldName: 'Status__c'
@@ -74,7 +75,10 @@ export default class LeaveRequestList extends LightningElement {
         this.wiredLeaveRequestsResult = result;
         const { data, error } = result;
         if (data) {
-            this.leaveRequests = [...data];
+            this.leaveRequests = data.map(record => ({
+                ...record,
+                displayPeriod: record.Is_Half_Day__c ? (record.Half_Day_Period__c || 'Half Day') : 'Full Day'
+            }));
             this.error = undefined;
         } else if (error) {
             this.error = error;
@@ -101,11 +105,13 @@ export default class LeaveRequestList extends LightningElement {
             const leaveType = (record.Leave_Type__c || '').toLowerCase();
             const comments = (record.Manager_Comments__c || '').toLowerCase();
             const status = (record.Status__c || '').toLowerCase();
+            const period = (record.displayPeriod || '').toLowerCase();
 
             return (
                 leaveType.includes(searchLower) ||
                 comments.includes(searchLower) ||
-                status.includes(searchLower)
+                status.includes(searchLower) ||
+                period.includes(searchLower)
             );
         });
     }

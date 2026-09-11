@@ -2,6 +2,16 @@
     <lightning-card title="Pending Manager Approvals" icon-name="standard:employee_job">
         <!-- Header Actions -->
         <div slot="actions" class="slds-grid slds-grid_vertical-align-center">
+            <template lwc:if={isAdmin}>
+                <lightning-button
+                    label="Run Year-End Rollover"
+                    icon-name="utility:clock"
+                    variant="neutral"
+                    class="slds-m-right_small"
+                    onclick={handleRunYearEndBatch}
+                    disabled={isLoading}>
+                </lightning-button>
+            </template>
             <lightning-badge label={recordCountLabel} class="slds-m-right_small"></lightning-badge>
             <lightning-button-icon
                 icon-name="utility:refresh"

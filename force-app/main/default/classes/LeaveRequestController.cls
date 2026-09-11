@@ -52,4 +52,20 @@ public static void rejectLeaveRequest(Id leaveRequestId,String managerComments) 
 public static Leave_Balance__c getLeaveBalance() {
     return LeaveRequestService.getLeaveBalance();
 }
+
+@AuraEnabled(cacheable=true)
+public static Boolean isCurrentUserAdmin() {
+    return LeaveRequestService.isSystemAdmin();
+}
+
+@AuraEnabled
+public static String runYearEndAccrualBatch() {
+    if (!LeaveRequestService.isSystemAdmin()) {
+        throw LeaveRequestService.createException(
+            'Only System Administrators are authorized to run the Year-End Accrual batch.'
+        );
+    }
+    Id jobId = Database.executeBatch(new LeaveAccrualBatch(), 200);
+    return String.valueOf(jobId);
+}
 }

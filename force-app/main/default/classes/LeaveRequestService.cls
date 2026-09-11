@@ -73,6 +73,8 @@ public with sharing class LeaveRequestService {
                 End_Date__c,
                 Total_Days__c,
                 Status__c,
+                Is_Half_Day__c,
+                Half_Day_Period__c,
                 Manager_Comments__c,
                 CreatedDate
             FROM Leave_Request__c
@@ -94,18 +96,24 @@ public with sharing class LeaveRequestService {
             Leave_Type__c = request.leaveType,
             Start_Date__c = request.startDate,
             End_Date__c = request.endDate,
-            Reason__c = request.reason
+            Reason__c = request.reason,
+            Is_Half_Day__c = (request.isHalfDay == true),
+            Half_Day_Period__c = request.halfDayPeriod
         );
     }
 
     /**
-     * Calculates the working leave days (excluding weekends).
+     * Calculates the working leave days (excluding weekends, 0.5 for half day).
      */
     private static void calculateTotalDays(Leave_Request__c leaveRequest) {
-        leaveRequest.Total_Days__c = calculateWorkingDays(
-            leaveRequest.Start_Date__c,
-            leaveRequest.End_Date__c
-        );
+        if (leaveRequest.Is_Half_Day__c == true) {
+            leaveRequest.Total_Days__c = 0.5;
+        } else {
+            leaveRequest.Total_Days__c = calculateWorkingDays(
+                leaveRequest.Start_Date__c,
+                leaveRequest.End_Date__c
+            );
+        }
     }
 
     /**
@@ -206,6 +214,8 @@ public with sharing class LeaveRequestService {
                 Total_Days__c,
                 Reason__c,
                 Status__c,
+                Is_Half_Day__c,
+                Half_Day_Period__c,
                 Manager_Comments__c,
                 CreatedDate
             FROM Leave_Request__c
@@ -229,7 +239,11 @@ public with sharing class LeaveRequestService {
 
     private static void checkOverlappingLeave(Leave_Request__c leaveRequest) {
         List<Leave_Request__c> overlappingRequests = [
-            SELECT Id
+            SELECT Id,
+                   Is_Half_Day__c,
+                   Half_Day_Period__c,
+                   Start_Date__c,
+                   End_Date__c
             FROM Leave_Request__c
             WHERE Employee__c = :leaveRequest.Employee__c
               AND Status__c IN (
@@ -238,13 +252,27 @@ public with sharing class LeaveRequestService {
               )
               AND Start_Date__c <= :leaveRequest.End_Date__c
               AND End_Date__c >= :leaveRequest.Start_Date__c
-            LIMIT 1
         ];
 
-        if (!overlappingRequests.isEmpty()) {
-            throw createException(
-                'You already have a pending or approved leave request for some of these dates.'
-            );
+        if (overlappingRequests.isEmpty()) {
+            return;
+        }
+
+        for (Leave_Request__c existing : overlappingRequests) {
+            // If either existing or new request is a full-day leave, conflict occurs
+            if (existing.Is_Half_Day__c != true || leaveRequest.Is_Half_Day__c != true) {
+                throw createException(
+                    'You already have a pending or approved leave request for some of these dates.'
+                );
+            }
+
+            // Both are half-day leaves: if they are for the same half, reject
+            if (existing.Half_Day_Period__c == leaveRequest.Half_Day_Period__c) {
+                throw createException(
+                    'You already have a ' + existing.Half_Day_Period__c + ' leave request on this date.'
+                );
+            }
+            // If one is First Half and the other is Second Half on the same date, they are allowed to coexist!
         }
     }
 
@@ -345,7 +373,7 @@ public with sharing class LeaveRequestService {
         }
     }
 
-    private static Boolean isSystemAdmin() {
+    public static Boolean isSystemAdmin() {
         List<User> users = [
             SELECT Profile.PermissionsModifyAllData, Profile.Name
             FROM User

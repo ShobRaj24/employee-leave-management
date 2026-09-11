@@ -14,4 +14,10 @@ public class LeaveRequestDTO {
 
     @AuraEnabled
     public String reason { get; set; }
+
+    @AuraEnabled
+    public Boolean isHalfDay { get; set; }
+
+    @AuraEnabled
+    public String halfDayPeriod { get; set; }
 }

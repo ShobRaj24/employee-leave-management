@@ -2,6 +2,8 @@ import { LightningElement, wire, api } from 'lwc';
 import getPendingLeaveRequests from '@salesforce/apex/LeaveRequestController.getPendingLeaveRequests';
 import approveLeaveRequest from '@salesforce/apex/LeaveRequestController.approveLeaveRequest';
 import rejectLeaveRequest from '@salesforce/apex/LeaveRequestController.rejectLeaveRequest';
+import isCurrentUserAdmin from '@salesforce/apex/LeaveRequestController.isCurrentUserAdmin';
+import runYearEndAccrualBatch from '@salesforce/apex/LeaveRequestController.runYearEndAccrualBatch';
 
 import { refreshApex } from '@salesforce/apex';
 import { ShowToastEvent } from 'lightning/platformShowToastEvent';
@@ -13,31 +15,37 @@ const COLUMNS = [
         label: 'Employee',
         fieldName: 'employeeName',
         type: 'text',
-        initialWidth: 160
+        initialWidth: 150
     },
     {
         label: 'Leave Type',
         fieldName: 'Leave_Type__c',
         type: 'text',
-        initialWidth: 150
+        initialWidth: 140
     },
     {
         label: 'Start Date',
         fieldName: 'Start_Date__c',
         type: 'date',
-        initialWidth: 130
+        initialWidth: 120
     },
     {
         label: 'End Date',
         fieldName: 'End_Date__c',
         type: 'date',
-        initialWidth: 130
+        initialWidth: 120
     },
     {
-        label: 'Total Days',
+        label: 'Days',
         fieldName: 'Total_Days__c',
         type: 'number',
-        initialWidth: 110
+        initialWidth: 80
+    },
+    {
+        label: 'Period',
+        fieldName: 'displayPeriod',
+        type: 'text',
+        initialWidth: 120
     },
     {
         label: 'Reason',
@@ -48,7 +56,7 @@ const COLUMNS = [
         label: 'Status',
         fieldName: 'Status__c',
         type: 'statusBadge',
-        initialWidth: 130,
+        initialWidth: 120,
         typeAttributes: {
             status: {
                 fieldName: 'Status__c'
@@ -90,6 +98,17 @@ export default class ManagerLeaveApproval extends LightningElement {
     wiredPendingRequestsResult;
     searchTerm = '';
     isLoading = false;
+    isAdmin = false;
+
+    @wire(isCurrentUserAdmin)
+    wiredAdmin({ data, error }) {
+        if (data !== undefined) {
+            this.isAdmin = data;
+        } else if (error) {
+            console.error('Error fetching admin status:', error);
+            this.isAdmin = false;
+        }
+    }
 
     @wire(getPendingLeaveRequests)
     wiredPendingRequests(result) {
@@ -99,7 +118,8 @@ export default class ManagerLeaveApproval extends LightningElement {
         if (data) {
             this.leaveRequests = data.map(record => ({
                 ...record,
-                employeeName: record.Employee__r?.Name || 'Unknown Employee'
+                employeeName: record.Employee__r?.Name || 'Unknown Employee',
+                displayPeriod: record.Is_Half_Day__c ? (record.Half_Day_Period__c || 'Half Day') : 'Full Day'
             }));
             this.error = undefined;
         } else if (error) {
@@ -118,7 +138,13 @@ export default class ManagerLeaveApproval extends LightningElement {
             const employee = (record.employeeName || '').toLowerCase();
             const leaveType = (record.Leave_Type__c || '').toLowerCase();
             const reason = (record.Reason__c || '').toLowerCase();
-            return employee.includes(lower) || leaveType.includes(lower) || reason.includes(lower);
+            const period = (record.displayPeriod || '').toLowerCase();
+            return (
+                employee.includes(lower) ||
+                leaveType.includes(lower) ||
+                reason.includes(lower) ||
+                period.includes(lower)
+            );
         });
     }
 
@@ -213,6 +239,41 @@ export default class ManagerLeaveApproval extends LightningElement {
                 new ShowToastEvent({
                     title: 'Action Failed',
                     message: error?.body?.message || error?.message || 'Failed to process the request.',
+                    variant: 'error'
+                })
+            );
+        } finally {
+            this.isLoading = false;
+        }
+    }
+
+    async handleRunYearEndBatch() {
+        const confirmed = await LightningConfirm.open({
+            message: 'Are you sure you want to run the Year-End Leave Rollover and Accrual batch? This will roll over eligible Annual leaves (up to 5 days) and credit fresh quotas to all active employees.',
+            variant: 'header',
+            label: 'Confirm Year-End Accrual'
+        });
+
+        if (!confirmed) {
+            return;
+        }
+
+        this.isLoading = true;
+        try {
+            const jobId = await runYearEndAccrualBatch();
+            this.dispatchEvent(
+                new ShowToastEvent({
+                    title: 'Batch Job Started',
+                    message: `Year-End Leave Rollover & Accrual batch has been queued (Job ID: ${jobId}).`,
+                    variant: 'success'
+                })
+            );
+            this.dispatchEvent(new CustomEvent('leaveapprovalprocessed', { bubbles: true, composed: true }));
+        } catch (error) {
+            this.dispatchEvent(
+                new ShowToastEvent({
+                    title: 'Batch Execution Failed',
+                    message: error?.body?.message || error?.message || 'Failed to start batch job.',
                     variant: 'error'
                 })
             );

@@ -24,6 +24,7 @@ public with sharing class LeaveRequestValidator {
         validateRequestExists(leaveRequest);
         validateRequiredFields(leaveRequest);
         validateDates(leaveRequest);
+        validateHalfDayRules(leaveRequest);
     }
 
     /**
@@ -92,6 +93,29 @@ public with sharing class LeaveRequestValidator {
 
         if (leaveRequest.Start_Date__c < Date.today()) {
             throw createException('Leave cannot be requested for past dates.');
+        }
+    }
+
+    /**
+     * Validates half-day rules (single day constraint, period selection, working day).
+     */
+    private static void validateHalfDayRules(Leave_Request__c leaveRequest) {
+        if (leaveRequest.Is_Half_Day__c != true) {
+            return;
+        }
+
+        if (leaveRequest.Start_Date__c != leaveRequest.End_Date__c) {
+            throw createException('Half-day leave must be for a single day. Start Date and End Date must be identical.');
+        }
+
+        if (String.isBlank(leaveRequest.Half_Day_Period__c) ||
+            (leaveRequest.Half_Day_Period__c != LeaveRequestConstants.HALF_DAY_FIRST &&
+             leaveRequest.Half_Day_Period__c != LeaveRequestConstants.HALF_DAY_SECOND)) {
+            throw createException('Please select a valid half-day period (First Half or Second Half).');
+        }
+
+        if (LeaveRequestService.calculateWorkingDays(leaveRequest.Start_Date__c, leaveRequest.End_Date__c) == 0) {
+            throw createException('Half-day leave cannot be taken on a weekend.');
         }
     }
 

@@ -79,12 +79,38 @@
                         </lightning-input>
                     </div>
 
+                    <!-- Half Day Selection Option -->
+                    <div class="slds-grid slds-wrap slds-gutters slds-m-bottom_medium slds-grid_vertical-align-center">
+                        <div class="slds-col slds-size_1-of-1 slds-medium-size_1-of-2">
+                            <lightning-input
+                                type="checkbox"
+                                label="Apply for Half Day (0.5 Days)"
+                                name="isHalfDay"
+                                checked={leaveRequest.isHalfDay}
+                                onchange={handleChange}>
+                            </lightning-input>
+                        </div>
+                        <template lwc:if={leaveRequest.isHalfDay}>
+                            <div class="slds-col slds-size_1-of-1 slds-medium-size_1-of-2">
+                                <lightning-radio-group
+                                    name="halfDayPeriod"
+                                    label="Half Day Period"
+                                    options={halfDayPeriodOptions}
+                                    value={leaveRequest.halfDayPeriod}
+                                    type="button"
+                                    required
+                                    onchange={handleChange}>
+                                </lightning-radio-group>
+                            </div>
+                        </template>
+                    </div>
+
                     <!-- Date Selection Row -->
                     <div class="slds-grid slds-wrap slds-gutters slds-m-bottom_medium">
                         <div class="slds-col slds-size_1-of-1 slds-medium-size_1-of-2">
                             <lightning-input
                                 type="date"
-                                label="Start Date"
+                                label={startDateLabel}
                                 name="startDate"
                                 value={leaveRequest.startDate}
                                 min={todayDate}
@@ -99,6 +125,7 @@
                                 name="endDate"
                                 value={leaveRequest.endDate}
                                 min={leaveRequest.startDate}
+                                disabled={leaveRequest.isHalfDay}
                                 required
                                 onchange={handleChange}>
                             </lightning-input>
